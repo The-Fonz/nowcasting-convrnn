@@ -3,35 +3,26 @@ import os
 import tarfile
 import requests
 
-from tqdm import tqdm
-
 pj = os.path.join
 
 # abspath also norms the path
 data_dir = os.path.abspath(pj(os.path.dirname(__file__), '..', 'data'))
 
-# Path configuration based on file category
-FILE_CATS = {
-    'RADAR_REFL_COMP': pj(data_dir, 'radar_refl_comp')
-}
+# Path config based on file category
+RADAR_REFL_COMP_DIR = pj(data_dir, 'radar_refl_comp')
 
 
-def download_cache(file_cat, url, filename=None, show_progress=True, extract_tar=False):
+def download_cache_ftp(file_dir, ftp_conn, ftp_url, filename=None, verbose=False):
     """
-    Download file or return cached, optionally extract TAR archive returning
-    list of files.
+    Retrieve binary file from FTP server if it doesn't exist yet.
     """
-    try:
-        file_dir = FILE_CATS[file_cat]
-    except KeyError:
-        raise Warning("File category '%s' was not configured", file_cat)
-    
     # Create parent dir if needed
     if not os.path.exists(file_dir):
-        print("Creating directory '{}'".format(file_dir))
-        os.mkdir(file_dir)
+        if verbose:
+            print("Creating directory '{}'".format(file_dir))
+        os.makedirs(file_dir)
     
-    url_filename = url.split('/')[-1]
+    url_filename = ftp_url.split('/')[-1]
     if not url_filename and not filename:
         raise Warning("URL does not contain filename, please specify a filename")
     
@@ -44,33 +35,33 @@ def download_cache(file_cat, url, filename=None, show_progress=True, extract_tar
         file_size = os.path.getsize(file_path)
         # Check if file is empty (e.g. failed download from before)
         if not file_size:
-            raise Warning("Target file exists but is empty! Please delete file.")
+            raise Warning("Target file exists but is empty! Please delete file. {}".format(file_path))
         else:
-            print("Hit cache for file with size {:.1f}kB".format(file_size/1E3))
+            if verbose:
+                print("Hit cache for file with size {:.1f}kB".format(file_size/1E3))
     # Download
     else:
-        r = requests.get(url, stream=True)
-
         with open(file_path, 'wb') as f:
-            print("Downloading...")
-            # 2**14 = 16kB
-            chunks = r.iter_content(chunk_size=2**14)
-            # Show progress bar with tqdm
-            if show_progress:
-                chunks = tqdm(chunks)
-            for chunk in chunks:
+            if verbose:
+                print("Downloading...")
+
+            def callback(chunk):
                 f.write(chunk)
+            # Blocks until complete
+            ftp_conn.retrbinary('RETR {}'.format(ftp_url), callback, blocksize=102400, rest=None)
+            if verbose:
+                print("Download finished")
     
-    # Extract TAR if asked
-    if extract_tar:
-        # Extract into dir with same name as file, split at first dot
-        extract_dirname = pj(file_dir, filename.split('.')[0])
-        if not os.path.isdir(extract_dirname):
-            print("Extracting TAR archive to directory '{}'".format(extract_dirname))
-            tarfile.open(file_path).extractall(extract_dirname)
-        else:
-            print("Extraction dir exists, giving you its contents '{}'".format(extract_dirname))
-        # Return list of absolute paths in extracted dir
-        return [pj(extract_dirname, fn) for fn in os.listdir(extract_dirname)]
+#     # Extract TAR if asked
+#     if extract_tar:
+#         # Extract into dir with same name as file, split at first dot
+#         extract_dirname = pj(file_dir, filename.split('.')[0])
+#         if not os.path.isdir(extract_dirname):
+#             print("Extracting TAR archive to directory '{}'".format(extract_dirname))
+#             tarfile.open(file_path).extractall(extract_dirname)
+#         else:
+#             print("Extraction dir exists, giving you its contents '{}'".format(extract_dirname))
+#         # Return list of absolute paths in extracted dir
+#         return [pj(extract_dirname, fn) for fn in os.listdir(extract_dirname)]
 
     return file_path
