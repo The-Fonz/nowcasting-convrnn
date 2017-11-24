@@ -41,17 +41,24 @@ def download_cache_ftp(file_dir, ftp_conn, ftp_url, filename=None, verbose=False
                 print("Hit cache for file with size {:.1f}kB".format(file_size/1E3))
     # Download
     else:
-        with open(file_path, 'wb') as f:
-            if verbose:
-                print("Downloading...")
+        try:
+            with open(file_path, 'wb') as f:
+                if verbose:
+                    print("Downloading...")
 
-            def callback(chunk):
-                f.write(chunk)
-            # Blocks until complete
-            ftp_conn.retrbinary('RETR {}'.format(ftp_url), callback, blocksize=102400, rest=None)
-            if verbose:
-                print("Download finished")
-    
+                def callback(chunk):
+                    f.write(chunk)
+                # Blocks until complete
+                ftp_conn.retrbinary('RETR {}'.format(ftp_url), callback, blocksize=102400, rest=None)
+        
+        except KeyboardInterrupt as e:
+            print("Received KeyboardInterrupt, deleting file to avoid incomplete files")
+            os.remove(file_path)
+            raise e
+
+        if verbose:
+            print("Download finished")
+
 #     # Extract TAR if asked
 #     if extract_tar:
 #         # Extract into dir with same name as file, split at first dot
