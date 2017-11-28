@@ -1,7 +1,8 @@
 # Path handling and other niceties for easy reference and less headache
-import os
-import tarfile
-import requests
+import os, io, re, glob, tarfile
+import concurrent.futures
+
+from tqdm import tqdm_notebook
 
 pj = os.path.join
 
@@ -10,6 +11,7 @@ data_dir = os.path.abspath(pj(os.path.dirname(__file__), '..', 'data'))
 
 # Path config based on file category
 RADAR_REFL_COMP_DIR = pj(data_dir, 'radar_refl_comp')
+RADAR_FORECAST_REFL_COMP_DIR = pj(data_dir, 'radar_forecast_refl_comp')
 
 
 def download_cache_ftp(file_dir, ftp_conn, ftp_url, filename=None, verbose=False):
@@ -59,16 +61,57 @@ def download_cache_ftp(file_dir, ftp_conn, ftp_url, filename=None, verbose=False
         if verbose:
             print("Download finished")
 
-#     # Extract TAR if asked
-#     if extract_tar:
-#         # Extract into dir with same name as file, split at first dot
-#         extract_dirname = pj(file_dir, filename.split('.')[0])
-#         if not os.path.isdir(extract_dirname):
-#             print("Extracting TAR archive to directory '{}'".format(extract_dirname))
-#             tarfile.open(file_path).extractall(extract_dirname)
-#         else:
-#             print("Extraction dir exists, giving you its contents '{}'".format(extract_dirname))
-#         # Return list of absolute paths in extracted dir
-#         return [pj(extract_dirname, fn) for fn in os.listdir(extract_dirname)]
-
     return file_path
+
+
+def explain_hdf5_file(file):
+    """
+    Show groups, datasets and attributes in h5py file
+    :param file: h5py file
+    :returns: list of strings
+    """
+    out = []
+    file.visititems(lambda name, obj:
+         out.append('{}\n\t{}\n\t\t{}\n'
+        .format(
+             name,
+             obj,
+            '\n\t\t'.join('{0}: {1}'.format(*t) for t in obj.attrs.items()))
+        ))
+    return out
+
+
+def untar_concurrent(filelist, delete=True, max_workers=8):
+    """
+    Untar all files given.
+    :param filelist: List of files to untar
+    :kwarg delete: Delete source file after verifying successful untar
+    """
+    def untar_file(tfp):
+        t = tarfile.open(tfp)
+        try:
+            contents_list = t.getnames()
+            t.extractall(folder)
+        except tarfile.ReadError as e:
+            print("Failed to read file {}".format(tfp))
+            raise e
+        # Check if files exist
+        for f in contents_list:
+            path = os.path.join(folder, f)
+            if not os.path.isfile(os.path.join(path)):
+                raise Warning("%s not found!", path)
+        # Remove original file to avoid doubling disk space
+        if delete:
+            os.remove(tfp)
+
+    # Untar concurrently for massive speedup
+    with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as e:
+        tasks = [e.submit(untar_file, tfp) for tfp in tar_files]
+        print("Submitted all tasks")
+        # Wait for finish and show progress bar
+        for future in tqdm_notebook(concurrent.futures.as_completed(tasks), desc="Extracting", unit="file"):
+            # Retrieve exceptions
+            # NOTE: These are raised after all futures have completed!
+            # tqdm progress bar will stop working 
+            future.result()
+
