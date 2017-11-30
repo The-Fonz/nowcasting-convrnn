@@ -7,7 +7,7 @@ import cartopy.crs as ccrs
 import cartopy.feature
 
 
-def plot_radar(h5radar, imgdata, figsize=(12,12), interval=200):
+def plot_radar(h5radar, imgdata, figsize=(12,12), interval=200, linecolor='white', colormap=None, img_slice=None):
     """
     Plot KNMI .h5 radar file, or animate list of h5 files.
     :param h5file: one h5file with projection information (must be h5py.File instance)
@@ -15,7 +15,7 @@ def plot_radar(h5radar, imgdata, figsize=(12,12), interval=200):
     :param figsize: Size of plot
     :param interval: If h5file is list, interval of animation frames
     :returns: matplotlib.Axes or IPython.display.HTML
-    """
+    """    
     if type(imgdata) in (list,tuple):
         first_imgdata = imgdata[0]
         is_animation = True
@@ -45,17 +45,17 @@ def plot_radar(h5radar, imgdata, figsize=(12,12), interval=200):
     
     # Add high-res coastline
     # NOTE: Downloads dataset if required
-    ax.coastlines('10m', color='white')
+    ax.coastlines('10m', color=linecolor)
     # Add high-res border
     ax.add_feature(cartopy.feature.NaturalEarthFeature('cultural', 'admin_0_boundary_lines_land', '10m'),
-                   edgecolor='white', facecolor='none')
+                   edgecolor=linecolor, facecolor='none')
     ax.gridlines(crs=stere)
 
     # We need one extra, not sure why, but not with guaraud shading
-    lons = np.linspace(ext_stere[0], ext_stere[1], 701)
-    lats = np.linspace(ext_stere[3], ext_stere[2], 766)
+    lons = np.linspace(ext_stere[0], ext_stere[1], first_imgdata.shape[1]+1)
+    lats = np.linspace(ext_stere[3], ext_stere[2], first_imgdata.shape[0]+1)
 
-    cmesh = ax.pcolormesh(lons, lats, first_imgdata)
+    cmesh = ax.pcolormesh(lons, lats, first_imgdata, cmap=colormap)
     
     # If this is not an animation, we're done here
     if not is_animation:
