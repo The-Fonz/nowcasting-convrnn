@@ -70,3 +70,25 @@ def plot_radar(h5radar, imgdata, figsize=(12,12), interval=200, linecolor='white
                                    frames=len(imgdata), interval=interval, blit=True)
 
     return HTML(anim.to_html5_video())
+
+
+def plot_synthetic(canvas, scale_up=2, interval=100):
+    """
+    Plot synthetic moving dataset
+    :param canvas: images in (b, w, h) order
+    :param scale_up: scale canvas up by this much?????
+    :returns: matplotlib.Axes or IPython.display.HTML
+    """
+    fig = plt.figure()
+    ax = plt.axes()
+    
+    p = ax.imshow(canvas[0])
+
+    def animate(i):
+        p.set_array(canvas[i])
+        # Must return Artists
+        return p.findobj()
+
+    anim = animation.FuncAnimation(fig, animate, frames=len(canvas), interval=interval, blit=True)
+
+    return HTML(anim.to_html5_video())
