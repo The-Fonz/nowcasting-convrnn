@@ -21,9 +21,9 @@ class Ball():
         return "<Ball shape={s.shape} radius={s.radius} velocity={s.velocity}\
         gravity={s.gravity} bounce={s.bounce}>".format(s=self)
 
-    def __call__(self, batch_size=20):
+    def __call__(self, sequence_length=20):
         "Return batch of images"
-        canvas = np.zeros((batch_size, *self.shape))
+        canvas = np.zeros((sequence_length, *self.shape))
         r = np.random.uniform(*self.radius)
         # Generate velocity vector
         v = np.random.uniform(-self.velocity, self.velocity, 2)
@@ -33,7 +33,7 @@ class Ball():
         for i in range(len(pos)):
             pos[i] = np.random.uniform(0, self.shape[i]-r*2) + r
         
-        for i in range(batch_size):
+        for i in range(sequence_length):
             # TODO: Integrate gravity, bounce
             # Generates coordinates of circle
             # Pass shape to avoid coloring outside the lines

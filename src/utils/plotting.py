@@ -72,11 +72,10 @@ def plot_radar(h5radar, imgdata, figsize=(12,12), interval=200, linecolor='white
     return HTML(anim.to_html5_video())
 
 
-def plot_synthetic(canvas, scale_up=2, interval=100):
+def plot_synthetic(canvas, interval=100):
     """
     Plot synthetic moving dataset
     :param canvas: images in (b, w, h) order
-    :param scale_up: scale canvas up by this much?????
     :returns: matplotlib.Axes or IPython.display.HTML
     """
     fig = plt.figure()
