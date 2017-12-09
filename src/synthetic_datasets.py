@@ -21,38 +21,42 @@ class Ball():
         return "<Ball shape={s.shape} radius={s.radius} velocity={s.velocity}\
         gravity={s.gravity} bounce={s.bounce}>".format(s=self)
 
-    def __call__(self, sequence_length=20):
-        "Return batch of images"
-        canvas = np.zeros((sequence_length, *self.shape))
-        r = np.random.uniform(*self.radius)
-        # Generate velocity vector
-        v = np.random.uniform(-self.velocity, self.velocity, 2)
+    def __call__(self, batch_size=1, sequence_length=20):
+        """
+        Return ndarray batch of images with shape (batch_size, sequence_length, channels, w, h) where channels=1
+        """
+        canvas = np.zeros((batch_size,sequence_length,1, *self.shape), dtype=np.float32)
         
-        # Choose position within constraints
-        pos = np.zeros(2)
-        for i in range(len(pos)):
-            pos[i] = np.random.uniform(0, self.shape[i]-r*2) + r
-        
-        for i in range(sequence_length):
-            # TODO: Integrate gravity, bounce
-            # Generates coordinates of circle
-            # Pass shape to avoid coloring outside the lines
-            rr, cc = skimage.draw.circle(pos[0], pos[1], r, shape=self.shape)
-            # Update position with velocity
-            pos += v
-            # Bounce ball from walls
-            if self.bounce:
-                # For x,y coords
-                for j in range(len(pos)):
-                    if pos[j]+r > self.shape[j]:
-                        # Break distance vector
-                        pos[j] = self.shape[j]*2 - r*2 - pos[j]
-                        # Reverse direction
-                        v[j] = -v[j]
-                    if pos[j] < r:
-                        pos[j] = r*2 - pos[j]
-                        v[j] = -v[j]
-            # Color canvas
-            canvas[i,rr,cc] = 1
+        for i_b in range(batch_size):
+            r = np.random.uniform(*self.radius)
+            # Generate velocity vector
+            v = np.random.uniform(-self.velocity, self.velocity, 2)
+
+            # Choose position within constraints
+            pos = np.zeros(2)
+            for i in range(len(pos)):
+                pos[i] = np.random.uniform(0, self.shape[i]-r*2) + r
+
+            for i_s in range(sequence_length):
+                # TODO: Integrate gravity, bounce
+                # Generates coordinates of circle
+                # Pass shape to avoid coloring outside the lines
+                rr, cc = skimage.draw.circle(pos[0], pos[1], r, shape=self.shape)
+                # Update position with velocity
+                pos += v
+                # Bounce ball from walls
+                if self.bounce:
+                    # For x,y coords
+                    for j in range(len(pos)):
+                        if pos[j]+r > self.shape[j]:
+                            # Break distance vector
+                            pos[j] = self.shape[j]*2 - r*2 - pos[j]
+                            # Reverse direction
+                            v[j] = -v[j]
+                        if pos[j] < r:
+                            pos[j] = r*2 - pos[j]
+                            v[j] = -v[j]
+                # Color canvas
+                canvas[i_b,i_s,0,rr,cc] = 1
         
         return canvas
