@@ -1,5 +1,8 @@
 import numpy as np
 from matplotlib import animation
+import matplotlib as mpl
+# Set non-graphical backend
+mpl.use('Agg')
 import matplotlib.pyplot as plt
 from IPython.display import HTML
 
@@ -72,13 +75,13 @@ def plot_radar(h5radar, imgdata, figsize=(12,12), interval=200, linecolor='white
     return HTML(anim.to_html5_video())
 
 
-def plot_synthetic(canvas, interval=100):
+def plot_synthetic(canvas, interval=100, figsize=None):
     """
     Plot synthetic moving dataset
     :param canvas: images in (b, w, h) order
     :returns: matplotlib.Axes or IPython.display.HTML
     """
-    fig = plt.figure()
+    fig = plt.figure(figsize=figsize)
     ax = plt.axes()
     
     p = ax.imshow(canvas[0])
@@ -91,3 +94,31 @@ def plot_synthetic(canvas, interval=100):
     anim = animation.FuncAnimation(fig, animate, frames=len(canvas), interval=interval, blit=True)
 
     return HTML(anim.to_html5_video())
+
+
+def plot_loss(losses, learning_rates=None, save_as=None, log_scale=True):
+    """
+    Plot loss and (optionally) learning rate.
+    :param losses: Array of loss values
+    :kwarg learning_rates: Optional array of learning rates
+    :kwarg save_as: Optional filename to save plot as png
+    :returns: 
+    """
+    fig, ax = plt.subplots()
+    ax.set_title("Training loss per batch, lowest {:.5f}".format(min(losses)))
+    ax.set_ylabel('MSE loss')
+    ax.plot(losses, 'b-')
+    if log_scale:
+        ax.set_yscale('log')
+
+    if learning_rates:
+        ax2 = ax.twinx()
+        ax2.plot(learning_rates, 'r-')
+        if log_scale:
+            ax2.set_yscale('log')
+        ax2.set_ylabel('Learning rate')
+    
+    if not save_as:
+        plt.show()
+    else:
+        plt.savefig(save_as)

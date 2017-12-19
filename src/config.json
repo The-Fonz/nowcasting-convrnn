@@ -1,0 +1,19 @@
+{
+    "use_cuda": true,
+    
+    "input_size": [30,30],
+    "radius": [8,8],
+    "velocity": 2,
+    "gravity": 0,
+    "bounce": true,
+    
+    "input_dim": 1,
+    "hidden_dim": [32,16,16],
+    "kernel_size": [5,5],
+    
+    "learning_rate": 0.04,
+    "n_batches": 1200,
+    "batch_size": 200,
+    "inputs_seq_len": 4,
+    "outputs_seq_len": 5
+}

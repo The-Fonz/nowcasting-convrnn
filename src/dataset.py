@@ -19,8 +19,10 @@ class ReflCompDataset():
     
     def __getitem__(self, idx):
         "Get img data array"
-        # Use with block to not leave h5py file open, this is limited
+        # Use with block to not leave h5py file open, otherwise we hit
+        # max open file limit
         with h5py.File(self.h5files[idx], 'r') as f:
+            # Return as float always to avoid problems later on
             return np.array(f['image1/image_data']).astype(np.float32)
     
     def get_file(self, idx):
