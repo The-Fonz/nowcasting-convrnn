@@ -1,8 +1,6 @@
-import os
+import os, sys, argparse, json, logging
 from os.path import abspath, join
 from time import time
-import argparse
-import json
 
 import numpy as np
 import torch
@@ -12,8 +10,19 @@ from model import ConvSeq2Seq
 from synthetic_datasets import Ball
 import utils
 
+# Get standard logger
+root = logging.getLogger()
+root.setLevel(logging.DEBUG)
 
-def train(a, save_dir=None, save_every=None):
+# Set stdout output
+ch = logging.StreamHandler(sys.stdout)
+ch.setLevel(logging.DEBUG)
+vanilla_formatter = logging.Formatter('%(message)s')
+ch.setFormatter(vanilla_formatter)
+root.addHandler(ch)
+
+
+def train(a, save_dir=None, save_every=None, logfile=None):
     """
     Train loop for ConvSeq2Seq model.
     Will catch a single ctrl-c KeyboardInterrupt and return results. 
@@ -44,6 +53,10 @@ def train(a, save_dir=None, save_every=None):
         batch_size            Batch size, depends on GPU memory and model size, adjust learning rate accordingly
         inputs_seq_len        Length of input sequence, e.g. 4
         outputs_seq_len       Length of predicted sequence, e.g. 6, these sum to sequence length
+        
+        # Learning rate scheme
+        step_size             Alter learning rate every so many steps
+        gamma                 Multiply learning rate by this factor every *step_size* steps
 
     :returns: Tuple of (model, losses, learning_rate)
     """
@@ -67,20 +80,32 @@ def train(a, save_dir=None, save_every=None):
     if save_dir:
         # Make absolute for easy further handling
         save_dir = abspath(save_dir)
+        
         # Create dir if needed
         if not os.path.exists(save_dir):
             os.makedirs(save_dir)
+            
+        # Set log file logging output
+        ch = logging.FileHandler(logfile)
+        ch.setLevel(logging.DEBUG)
+        formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+        ch.setFormatter(formatter)
+        # Add this filehandler to logger
+        root.addHandler(ch)
+        
         # Save model layout and config for later reference
         with open(join(save_dir, "config_summary.txt"), 'w') as f:
             f.write(str(model))
-            json.dump(a, f)
+            f.write('\n\n')
+            json.dump(a, f, indent=4)
 
+    # Define optimizer
     optim = torch.optim.Adam(model.parameters(), lr=a['learning_rate'])
 
     # Halve learning rate every n steps
     # TODO: Make adjustable
     scheduler = torch.optim.lr_scheduler.StepLR(
-        optim, step_size=150, gamma=.5)
+        optim, step_size=a['step_size'], gamma=a['gamma'])
 
     losses = []
     learning_rates = []
@@ -130,7 +155,7 @@ def train(a, save_dir=None, save_every=None):
             lr = scheduler.get_lr()
             learning_rates.append(lr)
 
-            print(("Batch {:4d} loss: {:.5f} min {:.2f} max {:.2f} lr={}"
+            logging.info(("Batch {:4d} loss: {:.5f} min {:.2f} max {:.2f} lr={}"
                    " t_gen={:.2f}s t_fwd={:.2f}s t_loss={:.2f}s t_bwd={:.2f}s b/s={:.2f}").format(i_b, loss.data[0],
                                 min(arr.min().data[0] for arr in preds), max(arr.max().data[0] for arr in preds),
                                 lr,
@@ -145,7 +170,7 @@ def train(a, save_dir=None, save_every=None):
 
     # Enable user to use ctrl-c to prematurely stop training but still return results
     except KeyboardInterrupt:
-        print("Caught KeyboardInterrupt, stopping training...")
+        logging.info("Caught KeyboardInterrupt, stopping training...")
     
     if save_dir:
         torch.save(model, join(save_dir, "train_convseq2seq_final.pt".format(i=i_b)))
@@ -164,8 +189,10 @@ if __name__=="__main__":
                         help="Directory to save results")
 
     args = parser.parse_args()
+    
+    logfile = join(args.save_dir, 'log.txt')
    
     # Load settings
     settings = json.load(open(args.settings_file, 'r'))
     # Train
-    train(settings, save_dir=args.save_dir)
+    train(settings, save_dir=args.save_dir, logfile=logfile)

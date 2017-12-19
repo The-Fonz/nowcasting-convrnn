@@ -1,19 +1,22 @@
 {
     "use_cuda": true,
     
-    "input_size": [30,30],
-    "radius": [8,8],
-    "velocity": 2,
+    "input_size": [25,25],
+    "radius": [6,6],
+    "velocity": 1,
     "gravity": 0,
     "bounce": true,
     
     "input_dim": 1,
-    "hidden_dim": [32,16,16],
+    "hidden_dim": [64,32,32],
     "kernel_size": [5,5],
     
-    "learning_rate": 0.04,
-    "n_batches": 1200,
-    "batch_size": 200,
-    "inputs_seq_len": 4,
-    "outputs_seq_len": 5
+    "learning_rate": 0.03,
+    "n_batches": 2000,
+    "batch_size": 128,
+    "inputs_seq_len": 5,
+    "outputs_seq_len": 15,
+    
+    "step_size": 150,
+    "gamma": 0.5
 }
