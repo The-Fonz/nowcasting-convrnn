@@ -7,7 +7,7 @@ from torch.autograd.variable import Variable
 
 class ConvSeq2Seq(nn.Module):
     
-    def __init__(self, input_size, input_dim, hidden_dim, kernel_size, num_layers, use_cuda=True):
+    def __init__(self, input_size, input_dim, hidden_dim, kernel_size, num_layers, peepholes=False, use_cuda=True):
         """
         Sequence-to-sequence convolutional LSTM model.
         """
@@ -16,9 +16,9 @@ class ConvSeq2Seq(nn.Module):
         self.use_cuda = use_cuda
         
         self.encoder = ConvLSTM(input_size, input_dim, hidden_dim, kernel_size, num_layers,
-                 batch_first=True, bias=True, return_all_layers=True, use_cuda=use_cuda)
+                 batch_first=True, bias=True, return_all_layers=True, peepholes=peepholes, use_cuda=use_cuda)
         self.decoder = ConvLSTM(input_size, input_dim, hidden_dim, kernel_size, num_layers,
-                         batch_first=True, bias=True, return_all_layers=True, use_cuda=use_cuda)
+                         batch_first=True, bias=True, return_all_layers=True, peepholes=peepholes, use_cuda=use_cuda)
         # Default weights should be ok
         self.decoder_output_conv = torch.nn.Conv2d(in_channels=hidden_dim[-1], out_channels=1, kernel_size=(1,1),
                                              padding=0, bias=True)
