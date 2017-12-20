@@ -42,13 +42,16 @@ def save_progress(save_dir, model, losses=None, learning_rates=None, iteration=N
             pickle.dump({'losses': losses, 'learning_rates': learning_rates}, f)
 
 
-def train(a, save_dir=None, save_every=None, logfile=None):
+def train(a, save_dir=None, save_every=None, logfile=None, use_cuda=True, multi_gpu=False):
     """
     Train loop for ConvSeq2Seq model.
     Will catch a single ctrl-c KeyboardInterrupt and return results. 
     
     :kwarg save_every: If save_dir is specified, save model every 200 iterations.
     :kwarg save_dir:   Save model and summary plots in this dir (recommended to make new one for every experiment).
+    :kwarg logfile:    File to log progress
+    :kwarg use_cuda:   True by default
+    :kwarg multi_gpu:  Use all available GPUs
     
     :arg a: A dict with the following options
     
@@ -81,8 +84,6 @@ def train(a, save_dir=None, save_every=None, logfile=None):
     :returns: Tuple of (model, losses, learning_rate)
     """
 
-    # Set defaults
-    a['use_cuda'] = a.get('use_cuda', True)
     # Always calculated
     a['num_layers'] = len(a['hidden_dim'])
     # Set to sane default: 5 saves in model run
@@ -92,11 +93,16 @@ def train(a, save_dir=None, save_every=None, logfile=None):
     b = Ball(shape=a['input_size'], radius=a['radius'], velocity=a['velocity'], gravity=a['gravity'], bounce=a['bounce'])
 
     model = ConvSeq2Seq(a['input_size'], a['input_dim'], a['hidden_dim'], a['kernel_size'],
-                        a['num_layers'], use_cuda=a['use_cuda'], peepholes=a['peepholes'],
+                        a['num_layers'], use_cuda=use_cuda, peepholes=a['peepholes'],
                         fullstack_output_conv=a['fullstack_output_conv'])
 
-    if a['use_cuda']:
+    if use_cuda:
         model.cuda()
+        if multi_gpu:
+            n_gpus = torch.cuda.device_count()
+            logging.info("Trying to use {} available GPUs...".format(n_gpus))
+            # Assuming that gpus are numbered sequentially and we can use all of them
+            model = torch.nn.DataParallel(model, device_ids=list(range(n_gpus)))
     
     if save_dir:
         # Make absolute for easy further handling
@@ -146,7 +152,7 @@ def train(a, save_dir=None, save_every=None, logfile=None):
             inputs_var = Variable(torch.from_numpy(inputs), requires_grad=True)
             targets_var = Variable(torch.from_numpy(targets))
 
-            if a['use_cuda']:
+            if use_cuda:
                 inputs_var = inputs_var.cuda()
                 targets_var = targets_var.cuda()
 
@@ -206,6 +212,10 @@ if __name__=="__main__":
                         help="JSON settings file")
     parser.add_argument('save_dir', metavar='SAVE_DIR',
                         help="Directory to save results")
+    parser.add_argument('--no-cuda', dest='use_cuda', action='store_false',
+                        help="Disable CUDA")
+    parser.add_argument('--multi-gpu', action='store_true',
+                        help="Use all available GPUs with nn.DataParallel")
     parser.add_argument('--clear', action='store_true',
                         help="Clear result directory")
 
@@ -223,4 +233,4 @@ if __name__=="__main__":
     # Load settings
     settings = json.load(open(args.settings_file, 'r'))
     # Train
-    train(settings, save_dir=args.save_dir, logfile=logfile)
+    train(settings, save_dir=args.save_dir, logfile=logfile, use_cuda=args.use_cuda, multi_gpu=args.multi_gpu)

@@ -1,6 +1,4 @@
 {
-    "use_cuda": true,
-    
     "input_size": [25,25],
     "radius": [6,6],
     "velocity": 1,
