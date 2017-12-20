@@ -1,4 +1,4 @@
-import os, sys, argparse, json, logging
+import os, sys, argparse, json, logging, pickle, glob
 from os.path import abspath, join
 from time import time
 
@@ -8,6 +8,9 @@ from torch.autograd.variable import Variable
 
 from model import ConvSeq2Seq
 from synthetic_datasets import Ball
+# Set non-graphical backend for utils.plotting
+import matplotlib as mpl
+mpl.use('Agg')
 import utils
 
 # Get standard logger
@@ -20,6 +23,23 @@ ch.setLevel(logging.DEBUG)
 vanilla_formatter = logging.Formatter('%(message)s')
 ch.setFormatter(vanilla_formatter)
 root.addHandler(ch)
+
+
+def save_progress(save_dir, model, losses=None, learning_rates=None, iteration=None):
+    """
+    Utility function for saving model, losses, and a plot.
+    :param save_dir: Path to directory to save results in
+    :param model: Subclass of nn.Module to save (pickle)
+    :kwarg losses: Optional array of losses per timestep
+    :kwarg learning_rates: Optional array of learning rates (same timesteps as losses)
+    :kwarg iteration: Index to use when saving the file
+    """
+    torch.save(model, join(save_dir, "train_convseq2seq_{i}.pt".format(i=iteration)))
+    # And summary plot, for good measure
+    if losses:
+        utils.plotting.plot_loss(losses, learning_rates=learning_rates, save_as=join(save_dir, 'summary.png'))
+        with open(join(save_dir, 'losses.pkl'), 'wb') as f:
+            pickle.dump({'losses': losses, 'learning_rates': learning_rates}, f)
 
 
 def train(a, save_dir=None, save_every=None, logfile=None):
@@ -72,7 +92,7 @@ def train(a, save_dir=None, save_every=None, logfile=None):
     b = Ball(shape=a['input_size'], radius=a['radius'], velocity=a['velocity'], gravity=a['gravity'], bounce=a['bounce'])
 
     model = ConvSeq2Seq(a['input_size'], a['input_dim'], a['hidden_dim'], a['kernel_size'],
-                        a['num_layers'], use_cuda=a['use_cuda'])
+                        a['num_layers'], use_cuda=a['use_cuda'], peepholes=a['peepholes'])
 
     if a['use_cuda']:
         model.cuda()
@@ -164,17 +184,15 @@ def train(a, save_dir=None, save_every=None, logfile=None):
             
             # Save model if save location specified
             if save_dir and (i_b % save_every == 0):
-                torch.save(model, join(save_dir, "train_convseq2seq_{i}.pt".format(i=i_b)))
-                # And summary plot, for good measure
-                utils.plotting.plot_loss(losses, learning_rates=learning_rates, save_as=join(save_dir, 'summary.png'))
+                save_progress(save_dir, model, losses, learning_rates, iteration=i_b)
 
     # Enable user to use ctrl-c to prematurely stop training but still return results
     except KeyboardInterrupt:
         logging.info("Caught KeyboardInterrupt, stopping training...")
     
     if save_dir:
-        torch.save(model, join(save_dir, "train_convseq2seq_final.pt".format(i=i_b)))
-        utils.plotting.plot_loss(losses, learning_rates=learning_rates)
+        # Use length of losses as we can't be sure if i_b is defined in this scope
+        save_progress(save_dir, model, losses, learning_rates, iteration=len(losses))
     
     return model, losses, learning_rates
 
@@ -187,8 +205,17 @@ if __name__=="__main__":
                         help="JSON settings file")
     parser.add_argument('save_dir', metavar='SAVE_DIR',
                         help="Directory to save results")
+    parser.add_argument('--clear', action='store_true',
+                        help="Clear result directory")
 
     args = parser.parse_args()
+    
+    if args.clear:
+        logging.info("Clearing directory {}...".format(args.save_dir))
+        files = glob.glob(join(abspath(args.save_dir), '*'))
+        for file in files:
+            os.remove(file)
+        logging.info("Removed {} files".format(len(files)))
     
     logfile = join(args.save_dir, 'log.txt')
    

@@ -1,8 +1,5 @@
 import numpy as np
 from matplotlib import animation
-import matplotlib as mpl
-# Set non-graphical backend
-mpl.use('Agg')
 import matplotlib.pyplot as plt
 from IPython.display import HTML
 
