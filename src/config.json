@@ -11,6 +11,7 @@
     "hidden_dim": [64,32,32],
     "kernel_size": [5,5],
     "peepholes": true,
+    "fullstack_output_conv": false,
     
     "learning_rate": 0.03,
     "n_batches": 2000,

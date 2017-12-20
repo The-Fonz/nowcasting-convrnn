@@ -92,7 +92,8 @@ def train(a, save_dir=None, save_every=None, logfile=None):
     b = Ball(shape=a['input_size'], radius=a['radius'], velocity=a['velocity'], gravity=a['gravity'], bounce=a['bounce'])
 
     model = ConvSeq2Seq(a['input_size'], a['input_dim'], a['hidden_dim'], a['kernel_size'],
-                        a['num_layers'], use_cuda=a['use_cuda'], peepholes=a['peepholes'])
+                        a['num_layers'], use_cuda=a['use_cuda'], peepholes=a['peepholes'],
+                        fullstack_output_conv=a['fullstack_output_conv'])
 
     if a['use_cuda']:
         model.cuda()
