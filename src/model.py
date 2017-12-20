@@ -66,7 +66,8 @@ class ConvSeq2Seq(nn.Module):
         # preds is ordered list of predictions
         if self.fullstack_output_conv:
             # Use all layer outputs h per timestep
-            preds = [self.decoder_output_conv(dec_layer_output_list[:,timestep]) for timestep in range(dummy_target_inputs.size()[1])]
+            # Concatenate along channel axis
+            preds = [self.decoder_output_conv(torch.cat(dec_layer_output_list, dim=2)[:,timestep]) for timestep in range(dummy_target_inputs.size()[1])]
         else:
             # Only use output h of last layer
             preds = [self.decoder_output_conv(last_layer_h[:,timestep]) for timestep in range(dummy_target_inputs.size()[1])]

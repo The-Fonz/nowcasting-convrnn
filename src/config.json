@@ -9,11 +9,11 @@
     "hidden_dim": [64,32,32],
     "kernel_size": [5,5],
     "peepholes": true,
-    "fullstack_output_conv": false,
+    "fullstack_output_conv": true,
     
     "learning_rate": 0.03,
     "n_batches": 2000,
-    "batch_size": 128,
+    "batch_size": 80,
     "inputs_seq_len": 5,
     "outputs_seq_len": 15,
     
