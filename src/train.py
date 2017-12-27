@@ -8,9 +8,10 @@ from torch.autograd.variable import Variable
 
 from model import ConvSeq2Seq
 from synthetic_datasets import Ball
-# Set non-graphical backend for utils.plotting
 import matplotlib as mpl
-mpl.use('Agg')
+# Set non-graphical backend for utils.plotting
+if __name__=="__main__":
+    mpl.use('Agg')
 import utils
 
 # Get standard logger

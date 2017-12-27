@@ -84,11 +84,11 @@ class ConvLSTMCell(nn.Module):
                           .format(type(input_tensor.data), type(h_cur.data)))
 
         combined_conv = self.conv(combined)
-        cc_i, cc_f, cc_o, cc_g = torch.split(combined_conv, self.hidden_dim, dim=1)
+        cc_i, cc_f, cc_o, cc_g = torch.chunk(combined_conv, chunks=4, dim=1)
 
         if self.use_peepholes:
             # Optional peepholes where i, f are dependent on c_cur...
-            cc_i_peep, cc_f_peep = torch.split(self.conv_peep_i_f(c_cur), self.hidden_dim, dim=1)
+            cc_i_peep, cc_f_peep = torch.chunk(self.conv_peep_i_f(c_cur), chunks=2, dim=1)
             # ...and o is dependent on c_cur but elementwise (1x1 convolution)
             cc_o_peep = self.conv_peep_o(c_cur)
             i = torch.sigmoid(cc_i + cc_i_peep + self.bias[0])
@@ -117,7 +117,7 @@ class ConvLSTMCell(nn.Module):
 
 class ConvLSTM(nn.Module):
     def __init__(self, input_dim, hidden_dim, kernel_size, num_layers,
-                 bias=True, return_all_layers=False, peepholes=False, use_cuda=False):
+                 bias=True, peepholes=False):
         """
         Multi-layer unrolled Convolutional LSTM implementation.
 
@@ -133,9 +133,6 @@ class ConvLSTM(nn.Module):
             dimension equal to num_layers.
         bias: bool
             Whether or not to add the bias.
-        use_cuda: bool
-            Whether or not to put tensors on GPU (using nn.Module.cuda() does not work here, we are initializing
-            hidden states during .forward(), which is nice because it gives us a flexible sequence length).
         """
         super(ConvLSTM, self).__init__()
 
@@ -152,7 +149,6 @@ class ConvLSTM(nn.Module):
         self.kernel_size = kernel_size
         self.num_layers = num_layers
         self.bias = bias
-        self.return_all_layers = return_all_layers
         # Use a ModuleList to make sure modules are discoverable by e.g. .parameters()
         self.cell_list = nn.ModuleList()
         for i in range(0, self.num_layers):
@@ -166,18 +162,19 @@ class ConvLSTM(nn.Module):
 
     def forward(self, input_tensor, hidden_state=None):
         """
+        Don't call this method directly but rather __call__ the class instance.
 
-        Parameters
-        ----------
-        input_tensor: todo
+        :param input_tensor:
             5-D Tensor of shape (b, t, c, h, w) where t is sequence length
-        hidden_state: todo
-            None. todo implement stateful
+        :kwarg hidden_state:
+            Hidden state in format [[h,c],[h,c],...], first layer first. Use the state list
+            of the forward pass.
 
         Returns
         -------
         last_state_list, layer_output
         """
+        # TODO: Put shape of last_state_list and layer_output
 
         # hidden_state kwarg corresponds directly to last_state_list output
         if hidden_state is not None:
@@ -207,10 +204,6 @@ class ConvLSTM(nn.Module):
 
             layer_output_list.append(layer_output)
             last_state_list.append([h, c])
-
-        if not self.return_all_layers:
-            layer_output_list = layer_output_list[-1:]
-            last_state_list = last_state_list[-1:]
 
         return layer_output_list, last_state_list
 
