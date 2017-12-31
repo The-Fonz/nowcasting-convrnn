@@ -172,6 +172,16 @@ class DecoderTest(unittest.TestCase):
                       internal_channels=8, kernel_size=3)
         # Set to inference mode
         dec.eval()
-        h = Variable(torch.randn(4, 5, 16, 8, 10), volatile=True)
+        h = Variable(torch.randn(2, 3, 16, 8, 10), volatile=True)
         img = dec(h)
-        self.assertEqual(list(img.size()), [4, 5, 1, 8, 10])
+        self.assertEqual(list(img.size()), [2, 3, 1, 8, 10])
+
+    def test_argmax(self):
+        dec = Decoder(n_rmb=4, input_channels=16, image_channels=1,
+                      output_channels=1,
+                      internal_channels=8, kernel_size=3)
+        # Set to inference mode
+        dec.eval()
+        h = Variable(torch.randn(2, 3, 16, 8, 10), volatile=True)
+        img = dec(h, argmax=True)
+        self.assertEqual(list(img.size()), [2, 3, 1, 8, 10])

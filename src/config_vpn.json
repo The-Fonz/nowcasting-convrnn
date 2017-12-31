@@ -1,0 +1,26 @@
+{
+    "input_size": [25,25],
+    "radius": [6,6],
+    "velocity": 1,
+    "gravity": 0,
+    "bounce": true,
+    
+    "input_dim": 1,
+    "hidden_dim": 32,
+    "n_rmb_encoder": 4,
+    "n_rmb_decoder": 4,
+    "n_pixvals": 255,
+    "enc_dilation": [1,2,3,4],
+    "enc_kernel_size": 3,
+    "lstm_layers": 1,
+    "use_lstm_peepholes": true,
+    
+    "learning_rate": 0.03,
+    "n_batches": 20,
+    "batch_size": 3,
+    "inputs_seq_len": 5,
+    "outputs_seq_len": 15,
+    
+    "step_size": 150,
+    "gamma": 0.5
+}

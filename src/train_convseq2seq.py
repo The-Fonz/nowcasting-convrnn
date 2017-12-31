@@ -6,7 +6,7 @@ import numpy as np
 import torch
 from torch.autograd.variable import Variable
 
-from model import ConvSeq2Seq
+from model_convseq2seq import ConvSeq2Seq
 from synthetic_datasets import Ball
 import matplotlib as mpl
 # Set non-graphical backend for utils.plotting
@@ -184,7 +184,8 @@ def train(a, save_dir=None, save_every=None, logfile=None, use_cuda=True, multi_
             learning_rates.append(lr)
 
             logging.info(("Batch {:4d} loss: {:.5f} min {:.2f} max {:.2f} lr={}"
-                   " t_gen={:.2f}s t_fwd={:.2f}s t_loss={:.2f}s t_bwd={:.2f}s b/s={:.2f}").format(i_b, loss.data[0],
+                   " t_gen={:.2f}s t_fwd={:.2f}s t_loss={:.2f}s t_bwd={:.2f}s b/s={:.2f}")
+                         .format(i_b, loss.data[0],
                                 min(arr.min().data[0] for arr in preds), max(arr.max().data[0] for arr in preds),
                                 lr,
                                 t2-t1, t3-t2, t4-t3, t5-t4, 1/(t5-t1)))
