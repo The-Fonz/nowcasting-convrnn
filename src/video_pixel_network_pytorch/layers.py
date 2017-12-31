@@ -26,7 +26,7 @@ class ResidualMultiplicativeBlock(nn.Module):
         self.kernel_size = kernel_size
         self.dilation = dilation
         self.integrate_frame_channels = integrate_frame_channels
-        
+
         self.additive_skip = additive_skip
         # Use a ModuleList to make sure modules are discoverable by e.g. .parameters()
         self.mus = nn.ModuleList([
@@ -71,6 +71,8 @@ class ResidualMultiplicativeBlock(nn.Module):
             x = self.conv_input(x)
 
             if self.integrate_frame_channels:
+                # Need to first pad of course
+                frame = F.pad(frame, [padding] * 4)
                 frame = frame[:, :, h_start:h_end, w_start:w_end]
                 # Concatenate in channel dimension
                 x = torch.cat((x, frame), dim=1)
@@ -83,7 +85,8 @@ class ResidualMultiplicativeBlock(nn.Module):
             x = self.conv_output(x)
 
             if self.additive_skip:
-                x = h + x
+                h_pad = F.pad(h, [padding] * 4)
+                x = h_pad[:, :, h_start:h_end, w_start:w_end] + x
             # Slice to retain dims
             return x[:,:,half_width:half_width+1, half_width:half_width+1]
 
@@ -130,8 +133,7 @@ class MultiplicativeUnit(nn.Module):
     def forward(self, h, nopad=False):
         """
         Forward step. Call class instead of this method directly. Will apply mask if
-        self.training=True and self.mask=True. self.training can be set/unset by calling .train() or
-        its inverse .eval() on this module or any parent.
+        self.mask=True.
 
         Args:
             h: Variable with shape (b,c,h,w)

@@ -76,7 +76,8 @@ class ConvLSTMCell(nn.Module):
         h_cur, c_cur = cur_state
 
         try:
-            combined = torch.cat((input_tensor, h_cur), dim=1)  # concatenate along channel axis
+            # Concatenate along channel axis
+            combined = torch.cat((input_tensor, h_cur), dim=1)
         # More useful notification for this common error
         except TypeError as e:
             raise Warning("TypeError when concatenating, you've probably given an incorrect tensor type. "
@@ -127,10 +128,10 @@ class ConvLSTM(nn.Module):
             Number of channels of input tensor.
         hidden_dim: int
             Number of channels of hidden state.
-        kernel_size: int or (int, int) or ((int, int), ...) where len == num_layers
-            Size of the convolutional kernel. Can be a single int for square kernel size equal for all layers,
-            (int, int) for rectangular kernel equal for all layers, or a fully-specified list of tuples with first
-            dimension equal to num_layers.
+        kernel_size: (int, int) or ((int, int), ...) where len == num_layers
+            Size of the convolutional kernel. Can be (int, int) for rectangular
+            kernel equal for all layers, or a fully-specified list of tuples
+            with first dimension equal to num_layers.
         bias: bool
             Whether or not to add the bias.
         """
@@ -215,9 +216,8 @@ class ConvLSTM(nn.Module):
 
     @staticmethod
     def _check_kernel_size_consistency(kernel_size):
-        if not (isinstance(kernel_size, tuple) or
-                    (isinstance(kernel_size, list) and all([isinstance(elem, tuple) for elem in kernel_size]))):
-            raise ValueError('`kernel_size` must be tuple or list of tuples')
+        if not (isinstance(kernel_size, tuple) or isinstance(kernel_size, list)):
+            raise ValueError('`kernel_size` must be tuple/list or list of lists')
 
     @staticmethod
     def _extend_for_multilayer_dim(param, num_layers):

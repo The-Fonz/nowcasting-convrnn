@@ -8,7 +8,7 @@ They achieve state of the art on Moving MNIST, nearing the theoretical bound, an
 
 Some simple unittests are in `./test.py`, run it with something like `python -m unittests video_pixel_network_pytorch.test`.
 
-TODO: Test ConvLSTM, encoder, decoder.
+TODO: Test Encoder+Decoder, train on ball dataset.
 
 ## Implementation details
 
