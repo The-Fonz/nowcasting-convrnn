@@ -17,9 +17,10 @@
     
     "learning_rate": 0.03,
     "n_batches": 20,
-    "batch_size": 3,
+    "batch_size": 1,
     "inputs_seq_len": 5,
     "outputs_seq_len": 15,
+    "infer_n_batches": 5,
     
     "step_size": 150,
     "gamma": 0.5

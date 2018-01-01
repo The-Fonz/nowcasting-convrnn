@@ -170,11 +170,12 @@ def train(a, save_dir=None, save_every=None, logfile=None, use_cuda=True, multi_
             if (i_b % 10) == 0:
                 t_evalstart = time()
                 model.eval()
-                inputs_var_volatile = Variable(torch.from_numpy(batch[:a['inputs_seq_len']]), volatile=True)
+                inputs_var_volatile = Variable(torch.from_numpy(batch[:a['infer_n_batches'],:a['inputs_seq_len']]), volatile=True)
                 if use_cuda:
                     inputs_var_volatile = inputs_var_volatile.cuda()
                 preds = model(inputs_var_volatile, n_predict=a['outputs_seq_len'])
-                loss = loss_func(utils.onehot.onehot(preds.data, a['n_pixvals']).cuda(), targets_onehot_var[:, a['inputs_seq_len']:])
+                loss = loss_func(utils.onehot.onehot(preds.data, a['n_pixvals']).cuda(),
+                                 targets_onehot_var[:a['infer_n_batches'], a['inputs_seq_len']:])
                 logging.info("Loss on fully predicted seq: {:.5f} min {:.2f} max {:.2f} t_eval={:.5f}s"
                              .format(loss.data[0],
                                      preds.min().data[0], preds.max().data[0],
