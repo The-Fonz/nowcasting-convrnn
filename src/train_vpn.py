@@ -165,6 +165,7 @@ def train(a, save_dir=None, save_every=None, logfile=None, use_cuda=True, multi_
             if use_cuda:
                 inputs_var = inputs_var.cuda()
                 targets_var = targets_var.cuda()
+                targets_onehot_var = targets_onehot_var.cuda()
 
             t2 = time()
 

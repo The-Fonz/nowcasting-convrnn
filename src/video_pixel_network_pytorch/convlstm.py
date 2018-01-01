@@ -64,12 +64,12 @@ class ConvLSTMCell(nn.Module):
             self.conv_peep_i_f.weight.data.normal_(0, .01)
             self.conv_peep_o.weight.data.normal_(0, .01)
 
-        # Use our own separate bias Variables
+        # Use our own separate bias Parameter (not Variable, needs to be Parameter to be discoverable)
         # Order is (i, f, o, g)
         # Make sure most is *i*nput to the state, little is *f*orgotten,
         # most is *o*utput, and no bias for candidate C
         # TODO: These are put through a sigmoid so 1 does not have special value. Get more sane defaults?
-        self.bias = Variable(torch.FloatTensor([1, 1, 1, 0]), requires_grad=True)
+        self.bias = nn.Parameter(torch.FloatTensor([1, 1, 1, 0]), requires_grad=True)
 
     def forward(self, input_tensor, cur_state):
 
