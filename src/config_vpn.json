@@ -9,7 +9,7 @@
     "hidden_dim": 32,
     "n_rmb_encoder": 4,
     "n_rmb_decoder": 4,
-    "n_pixvals": 255,
+    "n_pixvals": 2,
     "enc_dilation": [1,2,3,4],
     "enc_kernel_size": 3,
     "lstm_layers": 1,

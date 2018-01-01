@@ -175,11 +175,8 @@ def train(a, save_dir=None, save_every=None, logfile=None, use_cuda=True, multi_
 
             # Calculate error
             loss_func = torch.nn.BCEWithLogitsLoss()
-            loss = 0
-            for i_t in range(preds.size(1)):
-                # Ignore all up to inputs_seq_len
-                if i_t > a['inputs_seq_len']:
-                    loss += loss_func(preds[:,i_t], targets_onehot_var[:, i_t])
+            # Don't take loss into account for inputs_seq_len
+            loss = loss_func(preds[:,a['inputs_seq_len']:], targets_onehot_var[:,a['inputs_seq_len']:])
 
             t4 = time()
 
