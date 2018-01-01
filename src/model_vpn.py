@@ -11,13 +11,11 @@ class VPN(nn.Module):
                  enc_dilation = None,
                  enc_kernel_size = 3,
                  lstm_layers = 1,
-                 use_lstm_peepholes=True, use_cuda=True):
+                 use_lstm_peepholes=True):
         """
         Video Pixel Network model
         """
         super(VPN, self).__init__()
-
-        self.use_cuda = use_cuda
 
         self.encoder = Encoder(input_channels=img_channels, output_channels=c, internal_channels=c//2,
                       n_rmb=n_rmb_encoder, dilation=enc_dilation, kernel_size=enc_kernel_size,
@@ -27,7 +25,7 @@ class VPN(nn.Module):
                       output_channels=n_pixvals,
                       internal_channels=c//2, kernel_size=3)
 
-    def forward(self, inputs_var, targets=None):
+    def forward(self, inputs_var, targets=None, n_predict=None):
 
         if self.training:
 
@@ -42,13 +40,23 @@ class VPN(nn.Module):
 
         else:
             # Forward pass of encoder for all timesteps in input_var
+            context, lstm_state = self.encoder(inputs_var)
+
+            s = list(inputs_var.size())
+            s[1] = n_predict
+            preds = Variable(torch.zeros(s))
+            if inputs_var.data.is_cuda:
+                preds = preds.cuda()
 
             # Forward pass of decoder with last context (encoder output) and
             # no target img to condition on (all is generated)
+            preds[:,0] = self.decoder(context[:,-1:])
 
             # Feed output of decoder to encoder. Do one forward pass for encoder.
             # Pass context to decoder. Do one forward pass for decoder. Repeat this for `n_predict` times.
+            for i_p in range(n_predict-1):
+                context, lstm_state = self.encoder(preds[:,i_p:i_p+1], lstm_state=lstm_state)
+                preds[:,i_p+1] = self.decoder(context)
 
             # Output outputs of decoder layer
-
-            raise NotImplementedError("Evaluation mode not implemented yet.")
+            return preds

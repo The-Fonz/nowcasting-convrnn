@@ -191,16 +191,15 @@ class Decoder(nn.Module):
             return torch.stack(logits, dim=1)
 
         else:
-            # Mark input variable as volatile to avoid excessive memory use
-            # TODO: Figure out if this is a good thing or if it should be left to caller
-            inputs.volatile = True
-
             # Inputs have same b,t,h,w as predictions
             b, t, c, h, w = inputs.size()
 
             # Only 1 channel currently supported
             preds = Variable(torch.zeros(b, t, 1, h, w))
             i_channel = 0
+            # Put on CUDA if we're using it
+            if inputs.data.is_cuda:
+                preds = preds.cuda()
 
             # Construct output img then cycle over all pixels here
             # Sample from logit distribution for the one pixel,
@@ -226,5 +225,4 @@ class Decoder(nn.Module):
                                 pix_vals = torch.multinomial(soft, 1)
                             preds[:, i_timestep, i_channel, i_h, i_w] = pix_vals
 
-        return preds
-
+            return preds

@@ -39,7 +39,6 @@ def save_progress(save_dir, model, losses=None, learning_rates=None, iteration=N
     torch.save(model, join(save_dir, "train_convseq2seq_{i}.pt".format(i=iteration)))
     # And summary plot, for good measure
     if losses:
-        utils.plotting.plot_loss(losses, learning_rates=learning_rates, save_as=join(save_dir, 'summary.png'))
         with open(join(save_dir, 'losses.pkl'), 'wb') as f:
             pickle.dump({'losses': losses, 'learning_rates': learning_rates}, f)
 
@@ -99,8 +98,20 @@ def train(a, save_dir=None, save_every=None, logfile=None, use_cuda=True, multi_
                 enc_dilation = a['enc_dilation'],
                 enc_kernel_size = a['enc_kernel_size'],
                 lstm_layers = a['lstm_layers'],
-                use_lstm_peepholes = a['use_lstm_peepholes'],
-                use_cuda=use_cuda)
+                use_lstm_peepholes = a['use_lstm_peepholes'])
+
+    # Define loss function
+    loss_func = torch.nn.BCEWithLogitsLoss()
+
+    # Define optimizer
+    optim = torch.optim.Adam(model.parameters(), lr=a['learning_rate'])
+
+    # Multiply learning rate by *gamma* every *step_size* steps
+    scheduler = torch.optim.lr_scheduler.StepLR(
+        optim, step_size=a['step_size'], gamma=a['gamma'])
+
+    losses = []
+    learning_rates = []
 
     if use_cuda:
         model.cuda()
@@ -132,16 +143,6 @@ def train(a, save_dir=None, save_every=None, logfile=None, use_cuda=True, multi_
             f.write('\n\n')
             json.dump(a, f, indent=4)
 
-    # Define optimizer
-    optim = torch.optim.Adam(model.parameters(), lr=a['learning_rate'])
-
-    # Multiply learning rate by *gamma* every *step_size* steps
-    scheduler = torch.optim.lr_scheduler.StepLR(
-        optim, step_size=a['step_size'], gamma=a['gamma'])
-
-    losses = []
-    learning_rates = []
-
     try:
         for i_b in range(a['n_batches']):
             t1 = time()
@@ -151,31 +152,43 @@ def train(a, save_dir=None, save_every=None, logfile=None, use_cuda=True, multi_
             # (b, t, c, h, w)
             batch = b(batch_size=a['batch_size'], sequence_length=a['inputs_seq_len'] + a['outputs_seq_len'])
 
-            inputs_var = Variable(torch.from_numpy(batch), requires_grad=True)
-            targets = torch.from_numpy(batch)
-            targets_var = Variable(targets)
-            # One-hot encode targets
-            targets_long = torch.from_numpy(batch.astype(np.int64))
-            onehot_size = list(targets_long.size())
-            onehot_size[2] = a['n_pixvals']
-            targets_onehot = torch.zeros(onehot_size)
-            targets_onehot.scatter_(2, targets_long, 1)
-            targets_onehot_var = Variable(targets_onehot)
+            inputs = torch.from_numpy(batch)
+            inputs_var = Variable(inputs, requires_grad=True)
+            # TODO: Change to use real data?
+            targets_var = Variable(inputs)
+            # onehot needs LongTensor
+            targets_onehot_var = utils.onehot.onehot(inputs, a['n_pixvals'])
 
             if use_cuda:
                 inputs_var = inputs_var.cuda()
                 targets_var = targets_var.cuda()
                 targets_onehot_var = targets_onehot_var.cuda()
 
+            # Perform inference every so often, measure test error
+            # We do this on the current batch before training on the current batch as we're working with infinite data.
+            # Change to use test set if using real data.
+            if (i_b % 10) == 0:
+                t_evalstart = time()
+                model.eval()
+                inputs_var_volatile = Variable(torch.from_numpy(batch[:a['inputs_seq_len']]), volatile=True)
+                if use_cuda:
+                    inputs_var_volatile = inputs_var_volatile.cuda()
+                preds = model(inputs_var_volatile, n_predict=a['outputs_seq_len'])
+                loss = loss_func(utils.onehot.onehot(preds.data, a['n_pixvals']).cuda(), targets_onehot_var[:, a['inputs_seq_len']:])
+                logging.info("Loss on fully predicted seq: {:.5f} min {:.2f} max {:.2f} t_eval={:.5f}s"
+                             .format(loss.data[0],
+                                     preds.min().data[0], preds.max().data[0],
+                                     time()-t_evalstart))
+
             t2 = time()
 
+            # Explicitly set to train mode
+            model.train()
             # Needs targets to condition decoders on during training
             preds = model(inputs_var, targets=targets_var)
 
             t3 = time()
 
-            # Calculate error
-            loss_func = torch.nn.BCEWithLogitsLoss()
             # Don't take loss into account for inputs_seq_len
             loss = loss_func(preds[:,a['inputs_seq_len']:], targets_onehot_var[:,a['inputs_seq_len']:])
 
@@ -196,16 +209,19 @@ def train(a, save_dir=None, save_every=None, logfile=None, use_cuda=True, multi_
             logging.info(("Batch {:4d} loss: {:.5f} min {:.2f} max {:.2f} lr={}"
                           " t_gen={:.2f}s t_fwd={:.2f}s t_loss={:.2f}s t_bwd={:.2f}s b/s={:.2f}")
                          .format(i_b, loss.data[0],
-                                 min(arr.min().data[0] for arr in preds), max(arr.max().data[0] for arr in preds),
+                                 preds.min().data[0], preds.max().data[0],
                                  lr,
                                  t2 - t1, t3 - t2, t4 - t3, t5 - t4, 1 / (t5 - t1)))
             losses.append(loss.data[0])
 
+            # Plot losses often
+            if save_dir and (i_b % 10) == 0:
+                utils.plotting.plot_loss(losses, learning_rates=learning_rates, save_as=join(save_dir, 'summary.png'))
             # Save model if save location specified
             if save_dir and (i_b % save_every == 0):
                 save_progress(save_dir, model, losses, learning_rates, iteration=i_b)
 
-            # TODO: Perform inference every so often, measure test error
+
 
     # Enable user to use ctrl-c to prematurely stop training but still return results
     except KeyboardInterrupt:
@@ -220,7 +236,7 @@ def train(a, save_dir=None, save_every=None, logfile=None, use_cuda=True, multi_
 
 # Cmdline interface
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description='Train ConvLSTM on dataset')
+    parser = argparse.ArgumentParser(description='Train VPN on dataset')
 
     parser.add_argument('settings_file', metavar='SETTINGS_JSON',
                         help="JSON settings file")
