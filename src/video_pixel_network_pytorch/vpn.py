@@ -122,8 +122,8 @@ class Decoder(nn.Module):
         if n_rmb < 3:
             raise NotImplementedError("Fewer RMBs than 3 are not supported.")
 
-        if image_channels != 1:
-            raise NotImplementedError("Any other number of channels than 1 is not implemented yet.")
+        if image_channels > 1:
+            raise NotImplementedError("More than 1 image channel is not implemented yet.")
 
         # Use masking
         # First RMB needs to integrate target frame
@@ -134,9 +134,9 @@ class Decoder(nn.Module):
             n_mu=2,
             kernel_size=kernel_size,
             dilation=1,
-            integrate_frame_channels=image_channels,
+            integrate_frame_channels=0,
             additive_skip=True,
-            mask=True)])
+            mask=False)])
 
         # Make all RMBs except first and last
         self.rmbs.extend([ResidualMultiplicativeBlock(
@@ -147,7 +147,7 @@ class Decoder(nn.Module):
             kernel_size=kernel_size,
             dilation=1,
             additive_skip=True,
-            mask=True) for i in range(1, n_rmb-1)])
+            mask=False) for i in range(1, n_rmb-1)])
 
         # Last RMB outputs logits
         # Turn off additive skip
@@ -159,7 +159,7 @@ class Decoder(nn.Module):
             kernel_size=kernel_size,
             dilation=1,
             additive_skip=False,
-            mask=True))
+            mask=False))
 
     def forward(self, inputs, targets=None, argmax=False):
         """
@@ -183,7 +183,7 @@ class Decoder(nn.Module):
                 x = inputs[:,i_timestep]
                 # Calc all rmbs
                 for rmb in self.rmbs:
-                    x = rmb(x, frame=targets[:,i_timestep])
+                    x = rmb(x)
                 # Don't use softmax as we'll use it with loss func for numerical stability
                 logits.append(x)
 
@@ -191,38 +191,56 @@ class Decoder(nn.Module):
             return torch.stack(logits, dim=1)
 
         else:
-            # Inputs have same b,t,h,w as predictions
-            b, t, c, h, w = inputs.size()
-
-            # Only 1 channel currently supported
-            preds = Variable(torch.zeros(b, t, 1, h, w))
-            i_channel = 0
-            # Put on CUDA if we're using it
-            if inputs.data.is_cuda:
-                preds = preds.cuda()
-
-            # Construct output img then cycle over all pixels here
-            # Sample from logit distribution for the one pixel,
-            # or choose largest (argmax) if argmax=True
+            logits = []
             for i_timestep in range(inputs.size(1)):
+                x = inputs[:,i_timestep]
+                # Calc all rmbs
+                for rmb in self.rmbs:
+                    x = rmb(x)
+                # Don't use softmax as we'll use it with loss func for numerical stability
+                logits.append(x)
 
-                x = inputs[:, i_timestep]
+            # Add timestep dim
+            logits = torch.stack(logits, dim=1)
 
-                for i_h in range(inputs.size(-2)):
-                    for i_w in range(inputs.size(-1)):
+            soft = F.softmax(logits, dim=2)
+            # TODO: Hack, taking second channel
+            pix_vals = soft[:,:,1:]#torch.multinomial(soft, 2)
+            return pix_vals
 
-                        # Calc all rmbs
-                        for rmb in self.rmbs:
-                            # Calculates just one pixel at a time
-                            pix = rmb(x, frame=preds[:,i_timestep], pixel=(i_h,i_w))
-                            # Choose pixel value
-                            if argmax:
-                                # Over axis of discrete prob dist
-                                # Pixel values are index of highest val
-                                _, pix_vals = torch.topk(pix[:,:,0,0], 1, dim=1)
-                            else:
-                                soft = F.softmax(pix[:, :, 0, 0], dim=1)
-                                pix_vals = torch.multinomial(soft, 1)
-                            preds[:, i_timestep, i_channel, i_h, i_w] = pix_vals
 
-            return preds
+            # # Inputs have same b,t,h,w as predictions
+            # b, t, c, h, w = inputs.size()
+            #
+            # # Only 1 channel currently supported
+            # preds = Variable(torch.zeros(b, t, 1, h, w))
+            # i_channel = 0
+            # # Put on CUDA if we're using it
+            # if inputs.data.is_cuda:
+            #     preds = preds.cuda()
+            #
+            # # Construct output img then cycle over all pixels here
+            # # Sample from logit distribution for the one pixel,
+            # # or choose largest (argmax) if argmax=True
+            # for i_timestep in range(inputs.size(1)):
+            #
+            #     x = inputs[:, i_timestep]
+            #
+            #     for i_h in range(inputs.size(-2)):
+            #         for i_w in range(inputs.size(-1)):
+            #
+            #             # Calc all rmbs
+            #             for rmb in self.rmbs:
+            #                 # Calculates just one pixel at a time
+            #                 pix = rmb(x, frame=preds[:,i_timestep], pixel=(i_h,i_w))
+            #                 # Choose pixel value
+            #                 if argmax:
+            #                     # Over axis of discrete prob dist
+            #                     # Pixel values are index of highest val
+            #                     _, pix_vals = torch.topk(pix[:,:,0,0], 1, dim=1)
+            #                 else:
+            #                     soft = F.softmax(pix[:, :, 0, 0], dim=1)
+            #                     pix_vals = torch.multinomial(soft, 1)
+            #                 preds[:, i_timestep, i_channel, i_h, i_w] = pix_vals
+            #
+            # return preds

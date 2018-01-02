@@ -42,21 +42,18 @@ class VPN(nn.Module):
             # Forward pass of encoder for all timesteps in input_var
             context, lstm_state = self.encoder(inputs_var)
 
-            s = list(inputs_var.size())
-            s[1] = n_predict
-            preds = Variable(torch.zeros(s))
-            if inputs_var.data.is_cuda:
-                preds = preds.cuda()
+            preds = []
 
             # Forward pass of decoder with last context (encoder output) and
             # no target img to condition on (all is generated)
-            preds[:,0] = self.decoder(context[:,-1:])
+            # NOTE: choosing channel 2
+            preds.append(self.decoder(context[:,-1:]))
 
             # Feed output of decoder to encoder. Do one forward pass for encoder.
             # Pass context to decoder. Do one forward pass for decoder. Repeat this for `n_predict` times.
             for i_p in range(n_predict-1):
-                context, lstm_state = self.encoder(preds[:,i_p:i_p+1], lstm_state=lstm_state)
-                preds[:,i_p+1] = self.decoder(context)
+                context, lstm_state = self.encoder(preds[-1], lstm_state=lstm_state)
+                preds.append(self.decoder(context))
 
             # Output outputs of decoder layer
-            return preds
+            return torch.cat(preds, dim=1)
