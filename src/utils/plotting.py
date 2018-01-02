@@ -104,13 +104,13 @@ def plot_loss(losses, learning_rates=None, save_as=None, log_scale=True):
     fig, ax = plt.subplots()
     ax.set_title("Training loss per batch, lowest {:.5f}".format(min(losses)))
     ax.set_ylabel('MSE loss')
-    ax.plot(losses, 'b--')
+    ax.plot(losses, 'b-')
     if log_scale:
         ax.set_yscale('log')
 
     if learning_rates:
         ax2 = ax.twinx()
-        ax2.plot(learning_rates, 'r-')
+        ax2.plot(learning_rates, 'r--')
         if log_scale:
             ax2.set_yscale('log')
         ax2.set_ylabel('Learning rate')

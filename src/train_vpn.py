@@ -150,14 +150,15 @@ def train(a, save_dir=None, save_every=None, logfile=None, use_cuda=True, multi_
             scheduler.step()
 
             # (b, t, c, h, w)
-            batch = b(batch_size=a['batch_size'], sequence_length=a['inputs_seq_len'] + a['outputs_seq_len'])
+            batch = b(batch_size=a['batch_size'], sequence_length=a['inputs_seq_len'] + a['outputs_seq_len'] + 1)
 
-            inputs = torch.from_numpy(batch)
-            inputs_var = Variable(inputs, requires_grad=True)
+            batch_t = torch.from_numpy(batch)
+            # OFFSET INPUTS AND TARGETS
+            inputs_var = Variable(batch_t[:,:-1], requires_grad=True)
             # TODO: Change to use real data?
-            targets_var = Variable(inputs)
+            targets_var = Variable(batch_t[:,1:])
             # onehot needs LongTensor
-            targets_onehot_var = utils.onehot.onehot(inputs, a['n_pixvals'])
+            targets_onehot_var = utils.onehot.onehot(targets_var.data, a['n_pixvals'])
 
             if use_cuda:
                 inputs_var = inputs_var.cuda()
@@ -167,7 +168,7 @@ def train(a, save_dir=None, save_every=None, logfile=None, use_cuda=True, multi_
             # Perform inference every so often, measure test error
             # We do this on the current batch before training on the current batch as we're working with infinite data.
             # Change to use test set if using real data.
-            if (i_b % 10) == 0:
+            if i_b > 50 and (i_b % 25) == 0:
                 t_evalstart = time()
                 model.eval()
                 inputs_var_volatile = Variable(torch.from_numpy(batch[:a['infer_n_batches'],:a['inputs_seq_len']]), volatile=True)
