@@ -77,7 +77,6 @@ class Encoder(nn.Module):
         care of hooks.
         """
         outputs = []
-        lstm_state = None
         # We can theoretically compute the timesteps in parallel by treating
         # every timestep as separate batch, not sure if that'd be useful as we
         # need to compute LSTM serially anyway
@@ -205,7 +204,8 @@ class Decoder(nn.Module):
 
             soft = F.softmax(logits, dim=2)
             # TODO: Hack, taking second channel
-            pix_vals = soft[:,:,1:]#torch.multinomial(soft, 2)
+            pix_vals = soft[:,:,1:]# - soft[:,:,:1]
+#             pix_vals = torch.multinomial(soft, 2)
             return pix_vals
 
 
