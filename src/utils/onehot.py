@@ -5,7 +5,7 @@ def onehot(tensor, n_vals):
     "Convert a (*,c,h,w) (Long)Tensor to one-hot (*,n_vals,h,w) encoding"
 
     onehot_size = list(tensor.size())
-    onehot_size[2] = n_vals
+    onehot_size[-3] = n_vals
     onehot = torch.zeros(onehot_size)
     # Fill dimension c with 1's
     # scatter_ expects a LongTensor on cpu
