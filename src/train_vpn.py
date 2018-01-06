@@ -37,7 +37,6 @@ def save_progress(save_dir, model, losses=None, learning_rates=None, iteration=N
     :kwarg iteration: Index to use when saving the file
     """
     torch.save(model, join(save_dir, "train_convseq2seq_{i}.pt".format(i=iteration)))
-    # And summary plot, for good measure
     if losses:
         with open(join(save_dir, 'losses.pkl'), 'wb') as f:
             pickle.dump({'losses': losses, 'learning_rates': learning_rates}, f)
@@ -168,23 +167,23 @@ def train(a, save_dir=None, save_every=None, logfile=None, use_cuda=True, multi_
             # Perform inference every so often, measure test error
             # We do this on the current batch before training on the current batch as we're working with infinite data.
             # Change to use test set if using real data.
-            if i_b > 0 and (i_b % 1) == 0:
-                t_evalstart = time()
-                model.eval()
-                inputs_var_volatile = Variable(torch.from_numpy(batch[:a['infer_n_batches'],:a['inputs_seq_len']]), volatile=True)
-                if use_cuda:
-                    inputs_var_volatile = inputs_var_volatile.cuda()
-                preds = model(inputs_var_volatile, n_predict=a['outputs_seq_len'])
-                oh = utils.onehot.onehot(preds.data, a['n_pixvals'])
-                if use_cuda:
-                    oh = oh.cuda()
-                print(oh.size(), targets_onehot_var[:a['infer_n_batches'], a['inputs_seq_len']:].size())
-                loss = loss_func(oh,
-                                 targets_onehot_var[:a['infer_n_batches'], a['inputs_seq_len']:])
-                logging.info("Loss on fully predicted seq: {:.5f} min {:.2f} max {:.2f} t_eval={:.5f}s"
-                             .format(loss.data[0],
-                                     preds.min().data[0], preds.max().data[0],
-                                     time()-t_evalstart))
+            # if i_b > 0 and (i_b % 1) == 0:
+            #     t_evalstart = time()
+            #     model.eval()
+            #     inputs_var_volatile = Variable(torch.from_numpy(batch[:a['infer_n_batches'],:a['inputs_seq_len']]), volatile=True)
+            #     if use_cuda:
+            #         inputs_var_volatile = inputs_var_volatile.cuda()
+            #     preds = model(inputs_var_volatile, n_predict=a['outputs_seq_len'])
+            #     oh = utils.onehot.onehot(preds.data, a['n_pixvals'])
+            #     if use_cuda:
+            #         oh = oh.cuda()
+            #     print(oh.size(), targets_onehot_var[:a['infer_n_batches'], a['inputs_seq_len']:].size())
+            #     loss = loss_func(oh,
+            #                      targets_onehot_var[:a['infer_n_batches'], a['inputs_seq_len']:])
+            #     logging.info("Loss on fully predicted seq: {:.5f} min {:.2f} max {:.2f} t_eval={:.5f}s"
+            #                  .format(loss.data[0],
+            #                          preds.min().data[0], preds.max().data[0],
+            #                          time()-t_evalstart))
 
             t2 = time()
 
