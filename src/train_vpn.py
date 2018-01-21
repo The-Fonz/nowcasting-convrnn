@@ -1,4 +1,4 @@
-import os, sys, argparse, json, logging, pickle, glob
+import os, sys, argparse, json, logging, pickle, glob, importlib
 from os.path import abspath, join
 from time import time
 
@@ -85,29 +85,30 @@ def train(a, save_dir=None, save_every=None, logfile=None, use_cuda=True, multi_
     """
 
     # Set to sane default: 10 saves in model run
-    save_every = np.ceil(a['n_batches'] / 10).astype(int)
+    save_every = np.ceil(a.n_batches / 10).astype(int)
 
     # Velocity relates to kernel size
-    b = Ball(shape=a['input_size'], radius=a['radius'], velocity=a['velocity'], gravity=a['gravity'],
-             bounce=a['bounce'])
+    b = Ball(shape=a.input_size, radius=a.radius, velocity=a.velocity, gravity=a.gravity,
+             bounce=a.bounce)
 
-    model = VPN(img_channels=a['input_dim'], c=a['hidden_dim'],
-                n_rmb_encoder=a['n_rmb_encoder'], n_rmb_decoder=a['n_rmb_decoder'],
-                n_pixvals = a['n_pixvals'],
-                enc_dilation = a['enc_dilation'],
-                enc_kernel_size = a['enc_kernel_size'],
-                lstm_layers = a['lstm_layers'],
-                use_lstm_peepholes = a['use_lstm_peepholes'])
+    model = VPN(img_channels=a.input_dim, c=a.hidden_dim,
+                n_rmb_encoder=a.n_rmb_encoder, n_rmb_decoder=a.n_rmb_decoder,
+                n_context=a.n_context,
+                n_pixvals = a.n_pixvals,
+                enc_dilation = a.enc_dilation,
+                enc_kernel_size = a.enc_kernel_size,
+                lstm_layers = a.lstm_layers,
+                use_lstm_peepholes = a.use_lstm_peepholes)
 
     # Define loss function
     loss_func = torch.nn.BCEWithLogitsLoss()
 
     # Define optimizer
-    optim = torch.optim.Adam(model.parameters(), lr=a['learning_rate'])
+    optim = torch.optim.Adam(model.parameters(), lr=a.learning_rate)
 
     # Multiply learning rate by *gamma* every *step_size* steps
     scheduler = torch.optim.lr_scheduler.StepLR(
-        optim, step_size=a['step_size'], gamma=a['gamma'])
+        optim, step_size=a.step_size, gamma=a.gamma)
 
     losses = []
     learning_rates = []
@@ -140,16 +141,17 @@ def train(a, save_dir=None, save_every=None, logfile=None, use_cuda=True, multi_
         with open(join(save_dir, "config_summary.txt"), 'w') as f:
             f.write(str(model))
             f.write('\n\n')
-            json.dump(a, f, indent=4)
+            config_summary = '\n'.join(('{} = {}'.format(n, getattr(a, n)) for n in dir(a)))
+            f.write(config_summary)
 
     try:
-        for i_b in range(a['n_batches']):
+        for i_b in range(a.n_batches):
             t1 = time()
             # Learning rate scheduler
             scheduler.step()
 
             # (b, t, c, h, w)
-            batch = b(batch_size=a['batch_size'], sequence_length=a['inputs_seq_len'] + a['outputs_seq_len'] + 1)
+            batch = b(batch_size=a.batch_size, sequence_length=a.inputs_seq_len + a.outputs_seq_len + 1)
 
             batch_t = torch.from_numpy(batch)
             # OFFSET INPUTS AND TARGETS
@@ -157,7 +159,7 @@ def train(a, save_dir=None, save_every=None, logfile=None, use_cuda=True, multi_
             # TODO: Change to use real data?
             targets_var = Variable(batch_t[:,1:])
             # onehot needs LongTensor
-            targets_onehot_var = utils.onehot.onehot(targets_var.data, a['n_pixvals'])
+            targets_onehot_var = utils.onehot.onehot(targets_var.data, a.n_pixvals)
 
             if use_cuda:
                 inputs_var = inputs_var.cuda()
@@ -170,16 +172,16 @@ def train(a, save_dir=None, save_every=None, logfile=None, use_cuda=True, multi_
             # if i_b > 0 and (i_b % 1) == 0:
             #     t_evalstart = time()
             #     model.eval()
-            #     inputs_var_volatile = Variable(torch.from_numpy(batch[:a['infer_n_batches'],:a['inputs_seq_len']]), volatile=True)
+            #     inputs_var_volatile = Variable(torch.from_numpy(batch[:a.infer_n_batches,:a.inputs_seq_len]), volatile=True)
             #     if use_cuda:
             #         inputs_var_volatile = inputs_var_volatile.cuda()
-            #     preds = model(inputs_var_volatile, n_predict=a['outputs_seq_len'])
-            #     oh = utils.onehot.onehot(preds.data, a['n_pixvals'])
+            #     preds = model(inputs_var_volatile, n_predict=a.outputs_seq_len)
+            #     oh = utils.onehot.onehot(preds.data, a.n_pixvals)
             #     if use_cuda:
             #         oh = oh.cuda()
-            #     print(oh.size(), targets_onehot_var[:a['infer_n_batches'], a['inputs_seq_len']:].size())
+            #     print(oh.size(), targets_onehot_var[:a.infer_n_batches, a.inputs_seq_len:].size())
             #     loss = loss_func(oh,
-            #                      targets_onehot_var[:a['infer_n_batches'], a['inputs_seq_len']:])
+            #                      targets_onehot_var[:a.infer_n_batches, a.inputs_seq_len:])
             #     logging.info("Loss on fully predicted seq: {:.5f} min {:.2f} max {:.2f} t_eval={:.5f}s"
             #                  .format(loss.data[0],
             #                          preds.min().data[0], preds.max().data[0],
@@ -189,13 +191,16 @@ def train(a, save_dir=None, save_every=None, logfile=None, use_cuda=True, multi_
 
             # Explicitly set to train mode
             model.train()
+            # Apply masks
+            if a.mask:
+                model.mask()
             # Needs targets to condition decoders on during training
             preds = model(inputs_var, targets=targets_var)
 
             t3 = time()
 
             # Don't take loss into account for inputs_seq_len
-            loss = loss_func(preds[:,a['inputs_seq_len']:], targets_onehot_var[:,a['inputs_seq_len']:])
+            loss = loss_func(preds[:,a.inputs_seq_len:], targets_onehot_var[:,a.inputs_seq_len:])
 
             t4 = time()
 
@@ -266,6 +271,6 @@ if __name__ == "__main__":
     logfile = join(args.save_dir, 'log.txt')
 
     # Load settings
-    settings = json.load(open(args.settings_file, 'r'))
+    settings = importlib.import_module(args.settings_file)
     # Train
     train(settings, save_dir=args.save_dir, logfile=logfile, use_cuda=args.use_cuda, multi_gpu=args.multi_gpu)

@@ -51,8 +51,7 @@ class Encoder(nn.Module):
             internal_channels = internal_channels,
             n_mu=n_mu_per_rmb,
             kernel_size=kernel_size,
-            dilation=dilation[0] if dilation else 1,
-            mask=False)])
+            dilation=dilation[0] if dilation else 1)])
 
         for i in range(1, n_rmb):
             # Last RMB block outputs output_channels to feed into LSTM
@@ -62,8 +61,7 @@ class Encoder(nn.Module):
                 internal_channels = internal_channels,
                 n_mu=n_mu_per_rmb,
                 kernel_size=kernel_size,
-                dilation=dilation[i] if dilation else 1,
-                mask=False))
+                dilation=dilation[i] if dilation else 1))
 
         # Input dim and hidden dim are the same
         # Use kernel size of 3x3 by default. In the paper it's not clear what they use or
@@ -101,10 +99,12 @@ class Encoder(nn.Module):
 
 
 class Decoder(nn.Module):
-    def __init__(self, n_rmb, input_channels, image_channels, output_channels, internal_channels,
+    def __init__(self, n_rmb, input_channels, output_channels, internal_channels, image_channels=None, n_context=None,
                  kernel_size=3):
         """
-        Video Pixel Network decoder
+        Video Pixel Network decoder.
+
+        NOTE: Need to call .mask() for masking!
 
         Args:
             n_rmb (int): Number of residual multiplicative blocks (*l* in paper)
@@ -120,9 +120,10 @@ class Decoder(nn.Module):
         # Supporting n_rmb < 3 is trivial but would need implementation and is probably not effective anyway.
         if n_rmb < 3:
             raise NotImplementedError("Fewer RMBs than 3 are not supported.")
-
         if image_channels > 1:
             raise NotImplementedError("More than 1 image channel is not implemented yet.")
+
+        # TODO: Pass n_channels, n_context to RMB, it needs that knowledge for masking
 
         # Use masking
         # First RMB needs to integrate target frame
@@ -130,23 +131,25 @@ class Decoder(nn.Module):
             input_channels=input_channels,
             output_channels=input_channels,
             internal_channels=internal_channels,
+            image_channels=image_channels,
+            n_context=n_context,
             n_mu=2,
             kernel_size=kernel_size,
             dilation=1,
             integrate_frame_channels=0,
-            additive_skip=True,
-            mask=False)])
+            additive_skip=True)])
 
         # Make all RMBs except first and last
         self.rmbs.extend([ResidualMultiplicativeBlock(
             input_channels=input_channels,
             output_channels=input_channels,
             internal_channels=internal_channels,
+            image_channels=image_channels,
+            n_context=n_context,
             n_mu=2,
             kernel_size=kernel_size,
             dilation=1,
-            additive_skip=True,
-            mask=False) for i in range(1, n_rmb-1)])
+            additive_skip=True) for i in range(1, n_rmb-1)])
 
         # Last RMB outputs logits
         # Turn off additive skip
@@ -154,11 +157,19 @@ class Decoder(nn.Module):
             input_channels=input_channels,
             output_channels=output_channels,
             internal_channels=internal_channels,
+            image_channels=image_channels,
+            n_context=n_context,
             n_mu=2,
             kernel_size=kernel_size,
             dilation=1,
-            additive_skip=False,
-            mask=False))
+            additive_skip=False))
+
+    def mask(self):
+        """
+        Mask MUs of RMBs. Separate method so user can call it only when needed (e.g. after gradient update step).
+        """
+        for i, rmb in enumerate(self.rmbs):
+            rmb.mask(last = i==(len(self.rmbs)-1))
 
     def forward(self, inputs, targets=None, argmax=False):
         """
@@ -177,70 +188,93 @@ class Decoder(nn.Module):
         if self.training:
             if targets is None:
                 raise AssertionError("self.training=True and targets=None, please supply the targets to train on")
-            logits = []
-            for i_timestep in range(inputs.size(1)):
-                x = inputs[:,i_timestep]
-                # Calc all rmbs
-                for rmb in self.rmbs:
-                    x = rmb(x)
-                # Don't use softmax as we'll use it with loss func for numerical stability
-                logits.append(x)
-
-            # Add timestep dim
-            return torch.stack(logits, dim=1)
+            return self._forward_train(inputs, targets)
 
         else:
-            logits = []
-            for i_timestep in range(inputs.size(1)):
-                x = inputs[:,i_timestep]
-                # Calc all rmbs
-                for rmb in self.rmbs:
-                    x = rmb(x)
-                # Don't use softmax as we'll use it with loss func for numerical stability
-                logits.append(x)
+            return self._forward_inference(inputs, argmax)
 
-            # Add timestep dim
-            logits = torch.stack(logits, dim=1)
+    def _forward_train(self, inputs, targets):
+        logits = []
+        for i_timestep in range(inputs.size(1)):
+            x = inputs[:, i_timestep]
+            # Calc all rmbs
+            for rmb in self.rmbs:
+                x = rmb(x)
+            # Don't use softmax as we'll use it with loss func for numerical stability
+            logits.append(x)
 
-            soft = F.softmax(logits, dim=2)
-            # TODO: Hack, taking second channel
-            pix_vals = soft[:,:,1:]# - soft[:,:,:1]
-#             pix_vals = torch.multinomial(soft, 2)
-            return pix_vals
+        # Add timestep dim
+        return torch.stack(logits, dim=1)
+
+    def _forward_inference(self, inputs, argmax):
+        logits = []
+        for i_timestep in range(inputs.size(1)):
+            x = inputs[:, i_timestep]
+            # Calc all rmbs
+            for rmb in self.rmbs:
+                x = rmb(x)
+            # Don't use softmax as we'll use it with loss func for numerical stability
+            logits.append(x)
+
+        # Add timestep dim
+        logits = torch.stack(logits, dim=1)
+
+        soft = F.softmax(logits, dim=2)
+        # TODO: Hack, taking second channel
+        # pix_vals = soft[:, :, 1:]  # - soft[:,:,:1]
+
+        # TODO: Support multi-channel images, where we have to chunk the logits
+
+        # Put channel axis last (b,t,h,w,c)
+        mult = soft.permute(0,1,3,4,2)
+        size = list(mult.size())
+        # Need contiguous array for .view()
+        mult = mult.contiguous()
+        # Flatten batch, timestep, h, w dimensions so we have list of discrete prob dists
+        mult = mult.view(-1, mult.size(-1))
+        # Then take one sample for each
+        mult = torch.multinomial(mult, 1)
+
+        size[-1] = 1
+        mult = mult.view(*size)
+        # Put channel axis back in place (b,t,c,h,w)
+        pix_vals = mult.permute(0,1,4,2,3)
+
+        return pix_vals
 
 
-            # # Inputs have same b,t,h,w as predictions
-            # b, t, c, h, w = inputs.size()
-            #
-            # # Only 1 channel currently supported
-            # preds = Variable(torch.zeros(b, t, 1, h, w))
-            # i_channel = 0
-            # # Put on CUDA if we're using it
-            # if inputs.data.is_cuda:
-            #     preds = preds.cuda()
-            #
-            # # Construct output img then cycle over all pixels here
-            # # Sample from logit distribution for the one pixel,
-            # # or choose largest (argmax) if argmax=True
-            # for i_timestep in range(inputs.size(1)):
-            #
-            #     x = inputs[:, i_timestep]
-            #
-            #     for i_h in range(inputs.size(-2)):
-            #         for i_w in range(inputs.size(-1)):
-            #
-            #             # Calc all rmbs
-            #             for rmb in self.rmbs:
-            #                 # Calculates just one pixel at a time
-            #                 pix = rmb(x, frame=preds[:,i_timestep], pixel=(i_h,i_w))
-            #                 # Choose pixel value
-            #                 if argmax:
-            #                     # Over axis of discrete prob dist
-            #                     # Pixel values are index of highest val
-            #                     _, pix_vals = torch.topk(pix[:,:,0,0], 1, dim=1)
-            #                 else:
-            #                     soft = F.softmax(pix[:, :, 0, 0], dim=1)
-            #                     pix_vals = torch.multinomial(soft, 1)
-            #                 preds[:, i_timestep, i_channel, i_h, i_w] = pix_vals
-            #
-            # return preds
+        # # Inputs have same b,t,h,w as predictions
+        # b, t, c, h, w = inputs.size()
+        #
+        # # Only 1 channel currently supported
+        # preds = Variable(torch.zeros(b, t, 1, h, w))
+        # i_channel = 0
+        # # Put on CUDA if we're using it
+        # if inputs.data.is_cuda:
+        #     preds = preds.cuda()
+        #
+        # # Construct output img then cycle over all pixels here
+        # # Sample from logit distribution for the one pixel,
+        # # or choose largest (argmax) if argmax=True
+        # for i_timestep in range(inputs.size(1)):
+        #
+        #     x = inputs[:, i_timestep]
+        #
+        #     for i_h in range(inputs.size(-2)):
+        #         for i_w in range(inputs.size(-1)):
+        #
+        #             # Calc all rmbs
+        #             for rmb in self.rmbs:
+        #                 # Calculates just one pixel at a time
+        #                 pix = rmb(x, frame=preds[:,i_timestep], pixel=(i_h,i_w))
+        #                 # Choose pixel value
+        #                 if argmax:
+        #                     # Over axis of discrete prob dist
+        #                     # Pixel values are index of highest val
+        #                     _, pix_vals = torch.topk(pix[:,:,0,0], 1, dim=1)
+        #                 else:
+        #                     soft = F.softmax(pix[:, :, 0, 0], dim=1)
+        #                     pix_vals = torch.multinomial(soft, 1)
+        #                 preds[:, i_timestep, i_channel, i_h, i_w] = pix_vals
+        #
+        # return preds

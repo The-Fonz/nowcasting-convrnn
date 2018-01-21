@@ -7,6 +7,7 @@ from torch.autograd.variable import Variable
 
 class VPN(nn.Module):
     def __init__(self, img_channels, c, n_rmb_encoder, n_rmb_decoder,
+                 n_context = None,
                  n_pixvals = 255,
                  enc_dilation = None,
                  enc_kernel_size = 3,
@@ -22,8 +23,11 @@ class VPN(nn.Module):
                       lstm_layers=lstm_layers, use_lstm_peepholes=use_lstm_peepholes)
 
         self.decoder = Decoder(n_rmb=n_rmb_decoder, input_channels=c, image_channels=img_channels,
-                      output_channels=n_pixvals,
+                      n_context=n_context, output_channels=n_pixvals,
                       internal_channels=c//2, kernel_size=3)
+
+    def mask(self):
+        self.decoder.mask()
 
     def forward(self, inputs_var, targets=None, n_predict=None):
 
@@ -50,7 +54,7 @@ class VPN(nn.Module):
             preds.append(self.decoder(context[:,-1:]))
 
             # Feed output of decoder to encoder. Do one forward pass for encoder.
-            # Pass context to decoder. Do one forward pass for decoder. Repeat this for `n_predict` times.
+            # Pass context to decoder. Do one forward pass for decoder. Repeat this `n_predict` times.
             for i_p in range(n_predict-1):
                 context, lstm_state = self.encoder(preds[-1], lstm_state=lstm_state)
                 preds.append(self.decoder(context))
