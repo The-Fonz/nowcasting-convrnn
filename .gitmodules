@@ -1,3 +1,0 @@
-[submodule "src/convlstm_pytorch"]
-	path = src/convlstm_pytorch
-	url = https://github.com/the-fonz/convlstm_pytorch.git
