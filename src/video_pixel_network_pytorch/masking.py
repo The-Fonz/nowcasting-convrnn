@@ -74,8 +74,8 @@ def mask(weights, n_channels, n_context, mask_center_pixel_current=False, input_
 
     # Tensors have a flag indicating if they're on gpu or not
     if weights.data.is_cuda:
-        mask_center = mask_center.gpu()
-        mask_context = mask_context.gpu()
+        mask_center = mask_center.cuda()
+        mask_context = mask_context.cuda()
 
     for i_output in range(n_output_layers):
         for i_input in range(n_input_layers):
