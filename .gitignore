@@ -103,3 +103,6 @@ ENV/
 nohup.out
 
 \.idea/
+
+
+src/moving-mnist-data/
