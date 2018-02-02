@@ -98,7 +98,8 @@ def train(a, save_dir=None, save_every=None, logfile=None, use_cuda=True, multi_
                 enc_dilation = a.enc_dilation,
                 enc_kernel_size = a.enc_kernel_size,
                 lstm_layers = a.lstm_layers,
-                use_lstm_peepholes = a.use_lstm_peepholes)
+                use_lstm_peepholes = a.use_lstm_peepholes,
+                mask = a.mask)
 
     # Define loss function
     loss_func = torch.nn.BCEWithLogitsLoss()
@@ -191,9 +192,6 @@ def train(a, save_dir=None, save_every=None, logfile=None, use_cuda=True, multi_
 
             # Explicitly set to train mode
             model.train()
-            # Apply masks
-            if a.mask:
-                model.mask()
             # Needs targets to condition decoders on during training
             preds = model(inputs_var, targets=targets_var)
 

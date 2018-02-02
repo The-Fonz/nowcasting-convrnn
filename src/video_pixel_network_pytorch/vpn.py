@@ -116,14 +116,14 @@ class Decoder(nn.Module):
         """
         super(Decoder, self).__init__()
 
+        self.image_channels = image_channels
+
         # With current implementation we're creating first, middle and last blocks at least.
         # Supporting n_rmb < 3 is trivial but would need implementation and is probably not effective anyway.
         if n_rmb < 3:
             raise NotImplementedError("Fewer RMBs than 3 are not supported.")
         if image_channels > 1:
             raise NotImplementedError("More than 1 image channel is not implemented yet.")
-
-        # TODO: Pass n_channels, n_context to RMB, it needs that knowledge for masking
 
         # Use masking
         # First RMB needs to integrate target frame
@@ -136,7 +136,7 @@ class Decoder(nn.Module):
             n_mu=2,
             kernel_size=kernel_size,
             dilation=1,
-            integrate_frame_channels=0,
+            integrate_frame_channels=image_channels or 0,
             additive_skip=True)])
 
         # Make all RMBs except first and last
@@ -166,12 +166,12 @@ class Decoder(nn.Module):
 
     def mask(self):
         """
-        Mask MUs of RMBs. Separate method so user can call it only when needed (e.g. after gradient update step).
+        Mask MUs of RMBs.
         """
         for i, rmb in enumerate(self.rmbs):
             rmb.mask(last = i==(len(self.rmbs)-1))
 
-    def forward(self, inputs, targets=None, argmax=False):
+    def forward(self, inputs, targets=None, mask=False, argmax=False):
         """
         Don't call this method but __call__ the class.
 
@@ -191,7 +191,10 @@ class Decoder(nn.Module):
             return self._forward_train(inputs, targets)
 
         else:
-            return self._forward_inference(inputs, argmax)
+            if mask:
+                return self._forward_inference_mask(inputs, argmax=argmax)
+            else:
+                return self._forward_inference_nomask(inputs, argmax=argmax)
 
     def _forward_train(self, inputs, targets):
         logits = []
@@ -206,7 +209,8 @@ class Decoder(nn.Module):
         # Add timestep dim
         return torch.stack(logits, dim=1)
 
-    def _forward_inference(self, inputs, argmax):
+    def _forward_inference_nomask(self, inputs, argmax=False):
+        "Inference without conditioning on generated output"
         logits = []
         for i_timestep in range(inputs.size(1)):
             x = inputs[:, i_timestep]
@@ -220,8 +224,6 @@ class Decoder(nn.Module):
         logits = torch.stack(logits, dim=1)
 
         soft = F.softmax(logits, dim=2)
-        # TODO: Hack, taking second channel
-        # pix_vals = soft[:, :, 1:]  # - soft[:,:,:1]
 
         # TODO: Support multi-channel images, where we have to chunk the logits
 
@@ -242,6 +244,52 @@ class Decoder(nn.Module):
 
         return pix_vals
 
+
+    def _forward_inference_mask(self, inputs, argmax=False):
+        "Pixel-by-pixel inference, conditioning on current output"
+
+        # Inputs have same b,t,h,w as predictions
+        b, t, c, h, w = inputs.size()
+
+        preds = Variable(torch.zeros(b, t, self.image_channels, h, w))
+
+        # Put on CUDA if we're using it
+        if inputs.data.is_cuda:
+            preds = preds.cuda()
+# TODO: REWORK THIS SHIT
+
+        logits = []
+        for i_timestep in range(inputs.size(1)):
+            x = inputs[:, i_timestep]
+            # Calc all rmbs
+            for rmb in self.rmbs:
+                x = rmb(x)
+            # Don't use softmax as we'll use it with loss func for numerical stability
+            logits.append(x)
+
+        # Add timestep dim
+        logits = torch.stack(logits, dim=1)
+
+        soft = F.softmax(logits, dim=2)
+
+        # TODO: Support multi-channel images, where we have to chunk the logits
+
+        # Put channel axis last (b,t,h,w,c)
+        mult = soft.permute(0,1,3,4,2)
+        size = list(mult.size())
+        # Need contiguous array for .view()
+        mult = mult.contiguous()
+        # Flatten batch, timestep, h, w dimensions so we have list of discrete prob dists
+        mult = mult.view(-1, mult.size(-1))
+        # Then take one sample for each
+        mult = torch.multinomial(mult, 1)
+
+        size[-1] = 1
+        mult = mult.view(*size)
+        # Put channel axis back in place (b,t,c,h,w)
+        pix_vals = mult.permute(0,1,4,2,3)
+
+        return pix_vals
 
         # # Inputs have same b,t,h,w as predictions
         # b, t, c, h, w = inputs.size()

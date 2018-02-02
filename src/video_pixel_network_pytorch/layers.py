@@ -157,9 +157,8 @@ class ResidualMultiplicativeBlock(nn.Module):
         if pixel:
             return self._forward_pixel(h, frame, pixel)
 
-        # Masked convolution
         else:
-            return self._forward_masked(h, frame)
+            return self._forward(h, frame)
 
     def _forward_pixel(self, h, frame, pixel):
         padding = self.dilation * (self.kernel_size - 1) // 2
@@ -196,7 +195,7 @@ class ResidualMultiplicativeBlock(nn.Module):
         # Slice to retain dims
         return x[:, :, half_width:half_width + 1, half_width:half_width + 1]
 
-    def _forward_masked(self, h, frame):
+    def _forward(self, h, frame):
         x = self.conv_input(h)
 
         if self.integrate_frame_channels:
