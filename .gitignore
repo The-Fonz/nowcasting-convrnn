@@ -106,3 +106,7 @@ nohup.out
 
 
 src/moving-mnist-data/
+
+*.mp4
+
+experiments/
