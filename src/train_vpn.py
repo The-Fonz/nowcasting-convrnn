@@ -1,4 +1,4 @@
-import os, sys, argparse, json, logging, pickle, glob, importlib
+import os, sys, argparse, logging, pickle, glob, importlib
 from os.path import abspath, join
 from time import time
 
@@ -6,8 +6,6 @@ import numpy as np
 import torch
 from torch.autograd.variable import Variable
 
-from model_vpn import VPN
-from synthetic_datasets import Ball
 import matplotlib as mpl
 
 # Set non-graphical backend for utils.plotting
@@ -36,15 +34,16 @@ def save_progress(save_dir, model, losses=None, learning_rates=None, iteration=N
     :kwarg learning_rates: Optional array of learning rates (same timesteps as losses)
     :kwarg iteration: Index to use when saving the file
     """
-    torch.save(model, join(save_dir, "train_convseq2seq_{i}.pt".format(i=iteration)))
+    # Save only state dict for easier loading later on
+    torch.save(model.state_dict(), join(save_dir, "train_vpn_{i}.pt".format(i=iteration)))
     if losses:
         with open(join(save_dir, 'losses.pkl'), 'wb') as f:
             pickle.dump({'losses': losses, 'learning_rates': learning_rates}, f)
 
 
-def train(a, save_dir=None, save_every=None, logfile=None, use_cuda=True, multi_gpu=False):
+def train(model, dataset, meta, save_dir=None, save_every=None, logfile=None, use_cuda=True, multi_gpu=False):
     """
-    Train loop for ConvSeq2Seq model.
+    Training loop.
     Will catch a single ctrl-c KeyboardInterrupt and return results.
 
     :kwarg save_every: If save_dir is specified, save model every 200 iterations.
@@ -57,18 +56,6 @@ def train(a, save_dir=None, save_every=None, logfile=None, use_cuda=True, multi_
 
         # GPU use
         use_cuda              True by default
-
-        # Ball params
-        input_size            Input size uniform distribution (low, high)
-        radius                Radius uniform distribution     (low, high)
-        velocity              Max x/y velocity
-        gravity               Gravity
-        bounce                Boolean for wall bounce
-
-        # Network params
-        input_dim             Input channels (usually 1 for greyscale)
-        hidden_dim            List of hidden dimensions for each layer, e.g. [32,16,16] for 3-layer
-        kernel_size           Tuple of kernel size, e.g. (5,5)
 
         # Meta params
         learning_rate         Learning rate, e.g. 0.4
@@ -85,31 +72,17 @@ def train(a, save_dir=None, save_every=None, logfile=None, use_cuda=True, multi_
     """
 
     # Set to sane default: 10 saves in model run
-    save_every = np.ceil(a.n_batches / 10).astype(int)
-
-    # Velocity relates to kernel size
-    b = Ball(shape=a.input_size, radius=a.radius, velocity=a.velocity, gravity=a.gravity,
-             bounce=a.bounce)
-
-    model = VPN(img_channels=a.input_dim, c=a.hidden_dim,
-                n_rmb_encoder=a.n_rmb_encoder, n_rmb_decoder=a.n_rmb_decoder,
-                n_context=a.n_context,
-                n_pixvals = a.n_pixvals,
-                enc_dilation = a.enc_dilation,
-                enc_kernel_size = a.enc_kernel_size,
-                lstm_layers = a.lstm_layers,
-                use_lstm_peepholes = a.use_lstm_peepholes,
-                mask = a.mask)
+    save_every = np.ceil(meta["n_batches"] / 10).astype(int)
 
     # Define loss function
     loss_func = torch.nn.BCEWithLogitsLoss()
 
     # Define optimizer
-    optim = torch.optim.Adam(model.parameters(), lr=a.learning_rate)
+    optim = torch.optim.Adam(model.parameters(), lr=meta["learning_rate"])
 
     # Multiply learning rate by *gamma* every *step_size* steps
     scheduler = torch.optim.lr_scheduler.StepLR(
-        optim, step_size=a.step_size, gamma=a.gamma)
+        optim, step_size=meta["step_size"], gamma=meta["gamma"])
 
     losses = []
     learning_rates = []
@@ -140,19 +113,16 @@ def train(a, save_dir=None, save_every=None, logfile=None, use_cuda=True, multi_
 
         # Save model layout and config for later reference
         with open(join(save_dir, "config_summary.txt"), 'w') as f:
-            f.write(str(model))
-            f.write('\n\n')
-            config_summary = '\n'.join(('{} = {}'.format(n, getattr(a, n)) for n in dir(a)))
-            f.write(config_summary)
+            f.write('\n\n'.join(map(str, (dataset, model, meta))))
 
     try:
-        for i_b in range(a.n_batches):
+        for i_b in range(meta["n_batches"]):
             t1 = time()
             # Learning rate scheduler
             scheduler.step()
 
             # (b, t, c, h, w)
-            batch = b(batch_size=a.batch_size, sequence_length=a.inputs_seq_len + a.outputs_seq_len + 1)
+            batch = dataset(batch_size=meta["batch_size"], sequence_length=meta["inputs_seq_len"] + meta["outputs_seq_len"] + 1)
 
             batch_t = torch.from_numpy(batch)
             # OFFSET INPUTS AND TARGETS
@@ -160,7 +130,7 @@ def train(a, save_dir=None, save_every=None, logfile=None, use_cuda=True, multi_
             # TODO: Change to use real data?
             targets_var = Variable(batch_t[:,1:])
             # onehot needs LongTensor
-            targets_onehot_var = utils.onehot.onehot(targets_var.data, a.n_pixvals)
+            targets_onehot_var = utils.onehot.onehot(targets_var.data, meta["n_pixvals"])
 
             if use_cuda:
                 inputs_var = inputs_var.cuda()
@@ -198,7 +168,7 @@ def train(a, save_dir=None, save_every=None, logfile=None, use_cuda=True, multi_
             t3 = time()
 
             # Don't take loss into account for inputs_seq_len
-            loss = loss_func(preds[:,a.inputs_seq_len:], targets_onehot_var[:,a.inputs_seq_len:])
+            loss = loss_func(preds[:,meta["inputs_seq_len"]:], targets_onehot_var[:,meta["inputs_seq_len"]:])
 
             t4 = time()
 
@@ -229,8 +199,6 @@ def train(a, save_dir=None, save_every=None, logfile=None, use_cuda=True, multi_
             if save_dir and (i_b % save_every == 0):
                 save_progress(save_dir, model, losses, learning_rates, iteration=i_b)
 
-
-
     # Enable user to use ctrl-c to prematurely stop training but still return results
     except KeyboardInterrupt:
         logging.info("Caught KeyboardInterrupt, stopping training...")
@@ -246,8 +214,8 @@ def train(a, save_dir=None, save_every=None, logfile=None, use_cuda=True, multi_
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Train VPN on dataset')
 
-    parser.add_argument('settings_file', metavar='SETTINGS_JSON',
-                        help="JSON settings file")
+    parser.add_argument('settings_file', metavar='CONFIG_PY',
+                        help="Python file (without .py) with dataset, model and meta attributes")
     parser.add_argument('save_dir', metavar='SAVE_DIR',
                         help="Directory to save results")
     parser.add_argument('--no-cuda', dest='use_cuda', action='store_false',
@@ -269,6 +237,6 @@ if __name__ == "__main__":
     logfile = join(args.save_dir, 'log.txt')
 
     # Load settings
-    settings = importlib.import_module(args.settings_file)
+    config = importlib.import_module(args.settings_file)
     # Train
-    train(settings, save_dir=args.save_dir, logfile=logfile, use_cuda=args.use_cuda, multi_gpu=args.multi_gpu)
+    train(config.model, config.dataset, config.meta, save_dir=args.save_dir, logfile=logfile, use_cuda=args.use_cuda, multi_gpu=args.multi_gpu)
