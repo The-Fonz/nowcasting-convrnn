@@ -13,7 +13,7 @@ class VPN(nn.Module):
                  enc_kernel_size = 3,
                  lstm_layers = 1,
                  use_lstm_peepholes=True,
-		 mask = True):
+                 mask = True):
         """
         Video Pixel Network model
         """
@@ -27,7 +27,8 @@ class VPN(nn.Module):
 
         self.decoder = Decoder(n_rmb=n_rmb_decoder, input_channels=c, image_channels=img_channels,
                       n_context=n_context, output_channels=n_pixvals,
-                      internal_channels=c//2, kernel_size=3)
+                      internal_channels=c//2, kernel_size=3,
+                      mask = mask)
 
     def forward(self, inputs_var, targets=None, n_predict=None):
 
@@ -55,13 +56,13 @@ class VPN(nn.Module):
             # Forward pass of decoder with last context (encoder output) and
             # no target img to condition on (all is generated)
             # NOTE: choosing channel 2
-            preds.append(self.decoder(context[:,-1:], mask=self.mask))
+            preds.append(self.decoder(context[:,-1:]))
 
             # Feed output of decoder to encoder. Do one forward pass for encoder.
             # Pass context to decoder. Do one forward pass for decoder. Repeat this `n_predict` times.
             for i_p in range(n_predict-1):
                 context, lstm_state = self.encoder(preds[-1], lstm_state=lstm_state)
-                preds.append(self.decoder(context, mask=self.mask))
+                preds.append(self.decoder(context))
 
             # Output outputs of decoder layer
             return torch.cat(preds, dim=1)

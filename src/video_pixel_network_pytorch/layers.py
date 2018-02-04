@@ -94,7 +94,7 @@ class ResidualMultiplicativeBlock(nn.Module):
             integrate_frame_channels (int): Number of channels that we need to put on top of layer stack after input
                                             convolution
             mask (bool): Use masked convolutions
-            mu_class: MultiplicativeUnit class. Used as kwa        self.n_rg so we can use other classes if we want.
+            mu_class: MultiplicativeUnit class, other compatible classes can be used instead
         """
         super(ResidualMultiplicativeBlock, self).__init__()
 
@@ -122,7 +122,7 @@ class ResidualMultiplicativeBlock(nn.Module):
         """
         Mask MU's. We have all information needed from the arguments in the constructor
         """
-        # First mask input convolution, if needed
+        # First mask input convolution, if we're not first block
         if not self.integrate_frame_channels:
             mask(self.conv_input.weight, self.image_channels, self.n_context, mask_center_pixel_current=False,
                  input_repeats=True)
@@ -135,8 +135,9 @@ class ResidualMultiplicativeBlock(nn.Module):
             mask(weight, self.image_channels, self.n_context, mask_center_pixel_current=first,
                  input_repeats=not first, n_chunks=n_chunks)
 
+        # TODO: Multichannel support. Need to give division of output channel quantization somewhere
         mask(self.conv_output.weight, self.image_channels, self.n_context, mask_center_pixel_current=False,
-             input_repeats=True, n_logits_per_channel=[self.output_channels])
+             input_repeats=True, n_logits_per_channel=[self.output_channels] if last else None)
 
     def forward(self, h, frame=None, pixel=None):
         """
@@ -161,15 +162,22 @@ class ResidualMultiplicativeBlock(nn.Module):
             return self._forward(h, frame)
 
     def _forward_pixel(self, h, frame, pixel):
+        """
+        Calculates only one pixel of one channel. pixel = (channel, h, w)
+        """
+        i_channel = pixel[0]
+
+        # TODO: Support multiple channels
         padding = self.dilation * (self.kernel_size - 1) // 2
         # TODO: Move this repetitive padding, Decoder.forward() maybe
         # Pad with 0's, padding tuple ordered (left, right, top, bottom)
         x = F.pad(h, [padding] * 4)
         # Take just the patch size necessary for our kernel size and dilation
         half_width = ((self.kernel_size - 1) * self.dilation + 1) // 2
+
         # Add 1 to h_end as end is non-inclusive
-        h_start, h_end = pixel[0] + padding - half_width, pixel[0] + padding + half_width + 1
-        w_start, w_end = pixel[1] + padding - half_width, pixel[1] + padding + half_width + 1
+        h_start, h_end = pixel[1] + padding - half_width, pixel[1] + padding + half_width + 1
+        w_start, w_end = pixel[2] + padding - half_width, pixel[2] + padding + half_width + 1
         # Slice out square with the right size
         x = x[:, :, h_start:h_end, w_start:w_end]
         # Run through 1x1 conv
@@ -180,7 +188,8 @@ class ResidualMultiplicativeBlock(nn.Module):
             frame = F.pad(frame, [padding] * 4)
             frame = frame[:, :, h_start:h_end, w_start:w_end]
             # Concatenate in channel dimension
-            x = torch.cat((x, frame), dim=1)
+            # Make sure to place frame first as that is how we mask
+            x = torch.cat((frame, x), dim=1)
 
         for mu in self.mus:
             # nopad helps in calculating only the center pixel
@@ -192,14 +201,15 @@ class ResidualMultiplicativeBlock(nn.Module):
         if self.additive_skip:
             h_pad = F.pad(h, [padding] * 4)
             x = h_pad[:, :, h_start:h_end, w_start:w_end] + x
-        # Slice to retain dims
-        return x[:, :, half_width:half_width + 1, half_width:half_width + 1]
+        # Shape (b, n_logits)
+        return x[:, :, half_width, half_width]
 
     def _forward(self, h, frame):
         x = self.conv_input(h)
 
         if self.integrate_frame_channels:
-            x = torch.cat((x, frame), dim=1)
+            # Place frame first for masking
+            x = torch.cat((frame, x), dim=1)
 
         for mu in self.mus:
             x = mu(x)
