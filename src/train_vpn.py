@@ -222,17 +222,8 @@ if __name__ == "__main__":
                         help="Disable CUDA")
     parser.add_argument('--multi-gpu', action='store_true',
                         help="Use all available GPUs with nn.DataParallel")
-    parser.add_argument('--clear', action='store_true',
-                        help="Clear result directory")
 
     args = parser.parse_args()
-
-    if args.clear:
-        logging.info("Clearing directory {}...".format(args.save_dir))
-        files = glob.glob(join(abspath(args.save_dir), '*'))
-        for file in files:
-            os.remove(file)
-        logging.info("Removed {} files".format(len(files)))
 
     logfile = join(args.save_dir, 'log.txt')
 
