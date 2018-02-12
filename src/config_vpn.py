@@ -20,10 +20,10 @@ dataset = Ball(
 
 model = VPN(
     img_channels = 1,
-    c = 32,
+    c = 46,
     n_rmb_encoder = 4,
     n_rmb_decoder = 4,
-    n_context = 3,
+    n_context = 2,
     n_pixvals = n_pixvals,
     enc_dilation = [1,2,3,4],
     enc_kernel_size = 3,
@@ -33,9 +33,10 @@ model = VPN(
 )
 
 meta = dict(
-    learning_rate = 0.01,
+    # .0003 in paper
+    learning_rate = 0.001,
     n_batches = 2000,
-    batch_size = 100,
+    batch_size = 64,
     inputs_seq_len = 10,
     outputs_seq_len = 10,
     infer_n_batches = 5,
