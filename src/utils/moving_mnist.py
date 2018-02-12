@@ -45,11 +45,11 @@ def load_dataset():
     return load_mnist_images('train-images-idx3-ubyte.gz')
 
 # generates and returns video frames in uint8 array
-def generate_moving_mnist(shape=(64,64), seq_len=30, seqs=10000, num_sz=28, nums_per_image=2):
+def generate_moving_mnist(shape=(64,64), seq_len=30, seqs=10000, num_sz=28, nums_per_image=2, dtype=np.uint8):
     mnist = load_dataset()
     width, height = shape
     lims = (x_lim, y_lim) = width-num_sz, height-num_sz
-    dataset = np.empty((seq_len*seqs, 1, width, height), dtype=np.uint8)
+    dataset = np.empty((seqs, seq_len, 1, width, height), dtype=dtype)
     for seq_idx in range(seqs):
         # randomly generate direc/speed/position, calculate velocity vector
         direcs = np.pi * (np.random.rand(nums_per_image)*2 - 1)
@@ -77,7 +77,7 @@ def generate_moving_mnist(shape=(64,64), seq_len=30, seqs=10000, num_sz=28, nums
                         veloc[i] = tuple(list(veloc[i][:j]) + [-1 * veloc[i][j]] + list(veloc[i][j+1:]))
             positions = [tuple(map(sum, zip(p,v))) for p,v in zip(positions, veloc)]
             # copy additive canvas to data array
-            dataset[seq_idx*seq_len+frame_idx] = (canvas * 255).astype(np.uint8).clip(0,255)
+            dataset[seq_idx, frame_idx] = (canvas * 255).astype(dtype).clip(0,255)
     return dataset
 
 def main(dest, filetype='npz', frame_size=64, seq_len=30, seqs=100, num_sz=28, nums_per_image=2):

@@ -1,7 +1,10 @@
 import numpy as np
 import skimage.draw
 
-class Ball():
+from utils import moving_mnist
+
+
+class Ball:
     def __init__(self, shape=(100,100), radius=(5,25), velocity=5,
                  gravity=0, bounce=True):
         """
@@ -60,3 +63,23 @@ class Ball():
                 canvas[i_b,i_s,0,rr,cc] = 1
         
         return canvas
+
+
+class MovingMNIST:
+    def __init__(self, shape=(64,64), num_size=28, nums_per_image=2):
+        self.shape = shape
+        self.num_size = num_size
+        self.nums_per_image = nums_per_image
+
+    def __str__(self):
+        return "<MovingMNIST shape={s.shape} num_size={s.num_size} nums_per_image={s.nums_per_image}>".format(s=self)
+
+    def __call__(self, batch_size=1, sequence_length=20, dtype=np.float32):
+        # Returns dataset as shape (b, t, c, h, w)
+        dataset = moving_mnist.generate_moving_mnist(shape=self.shape,
+                                                     seq_len=sequence_length,
+                                                     seqs=batch_size,
+                                                     num_sz=self.num_size,
+                                                     nums_per_image=self.nums_per_image,
+                                                     dtype=dtype)
+        return dataset
