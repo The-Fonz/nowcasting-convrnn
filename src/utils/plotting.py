@@ -119,3 +119,5 @@ def plot_loss(losses, learning_rates=None, save_as=None, log_scale=True):
         plt.show()
     else:
         plt.savefig(save_as)
+
+    plt.close()
