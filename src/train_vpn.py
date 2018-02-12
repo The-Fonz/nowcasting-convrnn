@@ -78,11 +78,11 @@ def train(model, dataset, meta, save_dir=None, save_every=None, logfile=None, us
     loss_func = torch.nn.BCEWithLogitsLoss()
 
     # Define optimizer
-    optim = torch.optim.Adam(model.parameters(), lr=meta["learning_rate"])
+    optim = torch.optim.RMSprop(model.parameters(), lr=meta["learning_rate"])
 
     # Multiply learning rate by *gamma* every *step_size* steps
-    scheduler = torch.optim.lr_scheduler.StepLR(
-        optim, step_size=meta["step_size"], gamma=meta["gamma"])
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+        optim, factor=meta['gamma'], patience=meta['patience'])
 
     losses = []
     learning_rates = []
@@ -118,8 +118,6 @@ def train(model, dataset, meta, save_dir=None, save_every=None, logfile=None, us
     try:
         for i_b in range(meta["n_batches"]):
             t1 = time()
-            # Learning rate scheduler
-            scheduler.step()
 
             # (b, t, c, h, w)
             batch = dataset(batch_size=meta["batch_size"], sequence_length=meta["inputs_seq_len"] + meta["outputs_seq_len"] + 1)
@@ -180,8 +178,11 @@ def train(model, dataset, meta, save_dir=None, save_every=None, logfile=None, us
             optim.step()
             t5 = time()
 
+            # Scheduler needs metric
+            scheduler.step(loss.data[0])
+
             # Remember learning rate for later graphing
-            lr = scheduler.get_lr()
+            lr = [g['lr'] for g in optim.param_groups]
             learning_rates.append(lr)
 
             logging.info(("Batch {:4d} loss: {:.5f} min {:.2f} max {:.2f} lr={}"

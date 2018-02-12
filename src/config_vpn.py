@@ -40,8 +40,8 @@ meta = dict(
     outputs_seq_len = 10,
     infer_n_batches = 5,
 
-    step_size = 100,
-    gamma = 0.5,
+    patience = 50,
+    gamma = 0.3,
 
     # Extra stuff that training routine needs to know
     n_pixvals = n_pixvals
