@@ -48,6 +48,9 @@ class VPN(nn.Module):
             return output
 
         else:
+            if not n_predict:
+                raise Warning("Please specify number of timesteps to predict (n_predict)")
+
             # Forward pass of encoder for all timesteps in input_var
             context, lstm_state = self.encoder(inputs_var)
 
