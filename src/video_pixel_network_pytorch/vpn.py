@@ -193,7 +193,7 @@ class Decoder(nn.Module):
 
         else:
             if self.masking:
-                return self._forward_inference_autoregressive(inputs, argmax=argmax)
+                return self._forward_inference_autoregressive_naive(inputs, argmax=argmax)
             else:
                 return self._forward_inference_vanilla(inputs, argmax=argmax)
 
@@ -250,6 +250,47 @@ class Decoder(nn.Module):
         # Make sure to cast to proper type
         return pix_vals.type_as(inputs)
 
+    def _forward_inference_autoregressive_naive(self, inputs, argmax=False, show_progress=True):
+        "Very slow naive implementation where the entire frame is computed each step"
+
+        if self.image_channels != 1:
+            raise Warning("Only implemented for one channel")
+
+        # Inputs have same b,t,h,w as predictions
+        b, t, c, h, w = inputs.size()
+
+        preds = Variable(torch.zeros(b, t, self.image_channels, h, w))
+
+        if inputs.data.is_cuda:
+            preds = preds.cuda()
+
+        if show_progress:
+            from tqdm import tqdm
+            pbar = tqdm(total=t*h*w, unit='pix')
+
+        for i_timestep in range(t):
+            history = inputs[:, i_timestep]
+
+            for i_h in range(h):
+                for i_w in range(w):
+
+                    x = self.rmbs[0](history, frame=preds[:, i_timestep])
+
+                    for i_rmb in range(1, len(self.rmbs)):
+                        x = self.rmbs[i_rmb](x)
+
+                    # Sample for all pixels in this batch
+                    preds[:, i_timestep, :, i_h, i_w] = torch.multinomial(
+                        F.softmax(x[:, :, i_h, i_w], dim=1), 1)
+
+                    if show_progress:
+                        pbar.update(1)
+
+        if show_progress:
+            pbar.close()
+
+        return preds
+
     def _forward_inference_autoregressive(self, inputs, argmax=False):
         "Pixel-by-pixel inference, conditioning on current output"
 
@@ -257,6 +298,8 @@ class Decoder(nn.Module):
         b, t, c, h, w = inputs.size()
 
         preds = Variable(torch.zeros(b, t, self.image_channels, h, w))
+
+        # Make cache for all layers in-between
 
         if inputs.data.is_cuda:
             preds = preds.cuda()
@@ -267,12 +310,14 @@ class Decoder(nn.Module):
             for i_h in range(h):
                 for i_w in range(w):
                     for i_c in range(self.image_channels):
-                        # TODO: Set up patch that we're predicting?
+                        # Run through first RMB
+                        x = self.rmbs[0](history, frame=preds, pixel=(i_c, i_h, i_w))
 
-                        # TODO: Run through first RMB. Then all others
-                        for rmb in self.rmbs:
-                            # TODO: Multichannel
-                            pix_logits = rmb(history, frame=preds, pixel=(i_c, i_h, i_w))
+                        for i_rmb in range(1, len(self.rmbs)):
+                            x = self.rmbs[i_rmb](x, pixel=(i_c, i_h, i_w))
+
+                        # TODO: Multichannel support
+                        pix_soft = F.softmax(x)
                         # (b, c)
                         pix_soft = F.softmax(pix_logits, dim=1)
                         # (b, c)
