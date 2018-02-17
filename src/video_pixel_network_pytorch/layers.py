@@ -35,13 +35,7 @@ class MultiplicativeUnit(nn.Module):
         """
         return 4, self.conv.weight
 
-    def mask(self, maskfunc, *args, **kwargs):
-        """
-        Mask convolution with `maskfunc(weights: )`
-        """
-        maskfunc(self.conv.weight)
-
-    def forward(self, h, nopad=False):
+    def forward(self, h, nopad=False, mask_h=False):
         """
         Forward step. Call class instead of this method directly.
 
@@ -67,6 +61,14 @@ class MultiplicativeUnit(nn.Module):
             p = self.default_padding[0]
             # h was chopped down in the conv
             h = h[:, :, p:-p, p:-p]
+
+        # Fill image layer with zeros to avoid leaking at `g2 * h`,
+        # zeros because current pixel is zero when doing inference so this is consistent
+        if mask_h:
+            pass
+            m = torch.ones(h.size(1), h.size(2), h.size(3))
+            m[0].fill_(0)
+            h = h * torch.autograd.Variable(m, requires_grad=False)
 
         output = g1 * torch.tanh(g2 * h + g3 * u)
 
@@ -211,8 +213,9 @@ class ResidualMultiplicativeBlock(nn.Module):
             # Place frame first for masking
             x = torch.cat((frame, x), dim=1)
 
-        for mu in self.mus:
-            x = mu(x)
+        for i, mu in enumerate(self.mus):
+            # Mask h to avoid leaking, as it is multiplied elementwise
+            x = mu(x, mask_h=i==0 and self.integrate_frame_channels)
         x = self.conv_output(x)
 
         if self.additive_skip:
